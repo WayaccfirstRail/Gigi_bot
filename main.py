@@ -294,6 +294,217 @@ def get_user_purchased_content(user_id):
     conn.close()
     return purchases
 
+def get_vip_subscribers():
+    """Get all active VIP subscribers for notifications"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get active VIP subscribers
+    cursor.execute('''
+        SELECT u.user_id, u.first_name, u.username
+        FROM users u
+        JOIN vip_subscriptions v ON u.user_id = v.user_id
+        WHERE v.is_active = 1 AND datetime(v.expiry_date) > datetime('now')
+    ''')
+    
+    vip_users = cursor.fetchall()
+    conn.close()
+    return vip_users
+
+def get_non_vip_users():
+    """Get all non-VIP users (users without active VIP subscriptions) for notifications"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get users who are not VIP subscribers (no active subscription or expired)
+    cursor.execute('''
+        SELECT u.user_id, u.first_name, u.username
+        FROM users u
+        LEFT JOIN vip_subscriptions v ON u.user_id = v.user_id
+        WHERE v.user_id IS NULL 
+           OR v.is_active = 0 
+           OR datetime(v.expiry_date) <= datetime('now')
+    ''')
+    
+    non_vip_users = cursor.fetchall()
+    conn.close()
+    return non_vip_users
+
+def get_all_users():
+    """Get all users for general notifications"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id, first_name, username FROM users ORDER BY last_interaction DESC')
+    all_users = cursor.fetchall()
+    conn.close()
+    return all_users
+
+def send_notification_to_users(user_list, message_text, markup=None, pin_message=False):
+    """
+    Send notifications to a list of users with error handling
+    
+    Args:
+        user_list: List of tuples (user_id, first_name, username)
+        message_text: HTML formatted message text
+        markup: InlineKeyboardMarkup for buttons (optional)
+        pin_message: Whether to pin the message (default False)
+    
+    Returns:
+        dict: Statistics about sent/failed notifications
+    """
+    sent_count = 0
+    failed_count = 0
+    blocked_count = 0
+    failed_users = []
+    
+    for user_id, first_name, username in user_list:
+        try:
+            # Don't send to bot owner to avoid spam
+            if user_id == OWNER_ID:
+                continue
+                
+            # Send the notification
+            sent_message = bot.send_message(
+                user_id, 
+                message_text, 
+                reply_markup=markup, 
+                parse_mode='HTML',
+                disable_notification=False
+            )
+            
+            # Pin message if requested and successfully sent
+            if pin_message and sent_message:
+                try:
+                    bot.pin_chat_message(user_id, sent_message.message_id, disable_notification=True)
+                except Exception as pin_error:
+                    logger.warning(f"Failed to pin message for user {user_id}: {pin_error}")
+            
+            sent_count += 1
+            logger.info(f"Notification sent to {first_name} (@{username}) - ID: {user_id}")
+            
+        except Exception as e:
+            # Check if it's a Telegram API exception indicating user blocked the bot
+            error_str = str(e).lower()
+            if "403" in error_str or "forbidden" in error_str or "blocked" in error_str:
+                # User blocked the bot
+                blocked_count += 1
+                logger.info(f"User {first_name} (@{username}) has blocked the bot")
+            else:
+                failed_count += 1
+                failed_users.append((user_id, first_name, username, str(e)))
+                logger.error(f"Failed to send notification to {first_name} (@{username}): {e}")
+    
+    return {
+        'sent': sent_count,
+        'failed': failed_count,
+        'blocked': blocked_count,
+        'failed_users': failed_users,
+        'total_targeted': len(user_list)
+    }
+
+def notify_vip_teaser_uploaded(teaser_description):
+    """Send notification to all VIP subscribers about new VIP teaser"""
+    vip_users = get_vip_subscribers()
+    
+    if not vip_users:
+        logger.info("No VIP users to notify about new VIP teaser")
+        return {'sent': 0, 'failed': 0, 'blocked': 0, 'total_targeted': 0}
+    
+    # Create VIP teaser notification message
+    notification_text = f"""
+💎 <b>NEW VIP EXCLUSIVE TEASER!</b> 💎
+
+🎬 A brand new VIP teaser just dropped exclusively for you!
+
+✨ <b>What's new:</b> {teaser_description}
+
+🔥 As a VIP member, you get exclusive access to premium teasers that nobody else can see!
+
+💕 Thank you for being an amazing VIP supporter!
+"""
+    
+    # Create inline keyboard with VIP teaser button
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎬 View VIP Teasers", callback_data="vip_teasers_collection"))
+    markup.add(types.InlineKeyboardButton("💎 VIP Status", callback_data="vip_status"))
+    
+    # Send notifications with message pinning
+    stats = send_notification_to_users(vip_users, notification_text, markup, pin_message=True)
+    
+    # Log results
+    logger.info(f"VIP teaser notification sent to {stats['sent']}/{stats['total_targeted']} VIP users")
+    
+    # Notify owner about broadcast results
+    try:
+        owner_message = f"""
+📊 <b>VIP TEASER NOTIFICATION SENT</b>
+
+🎬 <b>Teaser:</b> {teaser_description}
+✅ <b>Sent:</b> {stats['sent']} users
+❌ <b>Failed:</b> {stats['failed']} users
+🚫 <b>Blocked:</b> {stats['blocked']} users
+📱 <b>Total VIPs:</b> {stats['total_targeted']} users
+
+💡 All VIP members have been notified about the new exclusive teaser!
+"""
+        bot.send_message(OWNER_ID, owner_message, parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Failed to notify owner about VIP teaser broadcast: {e}")
+    
+    return stats
+
+def notify_free_teaser_uploaded(teaser_description):
+    """Send notification to all non-VIP users about new free teaser"""
+    non_vip_users = get_non_vip_users()
+    
+    if not non_vip_users:
+        logger.info("No non-VIP users to notify about new free teaser")
+        return {'sent': 0, 'failed': 0, 'blocked': 0, 'total_targeted': 0}
+    
+    # Create free teaser notification message
+    notification_text = f"""
+🎬 <b>NEW FREE TEASER AVAILABLE!</b> 🎬
+
+✨ I just dropped a brand new teaser for you to enjoy!
+
+🎁 <b>What's new:</b> {teaser_description}
+
+💡 <b>Want more exclusive content?</b>
+Upgrade to VIP for premium teasers and unlimited access to my exclusive content library!
+
+🔥 Don't miss out - check it out now!
+"""
+    
+    # Create inline keyboard with teaser and VIP upgrade buttons
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎬 View Free Teasers", callback_data="teasers"))
+    markup.add(types.InlineKeyboardButton("💎 Upgrade to VIP", callback_data="vip_access"))
+    
+    # Send notifications with message pinning
+    stats = send_notification_to_users(non_vip_users, notification_text, markup, pin_message=True)
+    
+    # Log results
+    logger.info(f"Free teaser notification sent to {stats['sent']}/{stats['total_targeted']} non-VIP users")
+    
+    # Notify owner about broadcast results
+    try:
+        owner_message = f"""
+📊 <b>FREE TEASER NOTIFICATION SENT</b>
+
+🎬 <b>Teaser:</b> {teaser_description}
+✅ <b>Sent:</b> {stats['sent']} users
+❌ <b>Failed:</b> {stats['failed']} users
+🚫 <b>Blocked:</b> {stats['blocked']} users
+👥 <b>Total Non-VIPs:</b> {stats['total_targeted']} users
+
+💡 All non-VIP users have been notified about the new free teaser!
+"""
+        bot.send_message(OWNER_ID, owner_message, parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Failed to notify owner about free teaser broadcast: {e}")
+    
+    return stats
+
 def deliver_owned_content(chat_id, user_id, content_name):
     """Re-deliver content that user already owns"""
     # First verify the user actually owns this content
@@ -2742,6 +2953,9 @@ def handle_vip_teaser_description(message):
     try:
         add_teaser(session['file_path'], session['file_type'], description, vip_only=True)
         
+        # Send notifications to all VIP subscribers about the new VIP teaser
+        notification_stats = notify_vip_teaser_uploaded(description)
+        
         success_text = f"""
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
@@ -2749,6 +2963,11 @@ def handle_vip_teaser_description(message):
 📝 <b>Description:</b> {description}
 
 💎 Your VIP teaser is now live! VIP members will see this exclusive content when they use /teaser.
+
+📱 <b>VIP Notifications Sent:</b>
+✅ Delivered to {notification_stats['sent']} VIP members
+🚫 {notification_stats['blocked']} users have blocked the bot
+❌ {notification_stats['failed']} delivery failures
 
 🔄 You can upload multiple VIP teasers - the most recent one will be shown first to VIP members.
 """
@@ -2779,22 +2998,30 @@ def handle_teaser_description(message):
     try:
         add_teaser(session['file_id'], session['file_type'], description)
         
+        # Send notifications to all non-VIP users about the new free teaser
+        notification_stats = notify_free_teaser_uploaded(description)
+        
         success_text = f"""
-🎉 **TEASER UPLOADED SUCCESSFULLY!** 🎉
+🎉 <b>FREE TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
-🎬 **Type:** {session['file_type'].title()}
-📝 **Description:** {description}
+🎬 <b>Type:</b> {session['file_type'].title()}
+📝 <b>Description:</b> {description}
 
-Your teaser is now live! Non-VIP users will see this when they use /teaser.
+🎁 Your free teaser is now live! Non-VIP users will see this when they use /teaser.
+
+📱 <b>Free Teaser Notifications Sent:</b>
+✅ Delivered to {notification_stats['sent']} non-VIP users
+🚫 {notification_stats['blocked']} users have blocked the bot
+❌ {notification_stats['failed']} delivery failures
 
 🔄 You can upload multiple teasers - the most recent one will be shown first.
 """
         
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("🎬 Upload Another Teaser", callback_data="start_teaser_upload"))
+        markup.add(types.InlineKeyboardButton("🎬 Upload Another Free Teaser", callback_data="start_teaser_upload"))
         markup.add(types.InlineKeyboardButton("👥 View Customers", callback_data="owner_list_users"))
         
-        bot.send_message(OWNER_ID, success_text, reply_markup=markup)
+        bot.send_message(OWNER_ID, success_text, reply_markup=markup, parse_mode='HTML')
         
     except Exception as e:
         bot.send_message(OWNER_ID, f"❌ Error saving teaser: {str(e)}")
