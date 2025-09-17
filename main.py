@@ -2142,7 +2142,7 @@ Use the buttons below to navigate - no need to type commands!
     # Row 1: Main actions
     markup.add(
         types.InlineKeyboardButton("🏠 VIPZone", callback_data="cmd_start"),
-        types.InlineKeyboardButton("🎬 Teasers", callback_data="cmd_teaser")
+        types.InlineKeyboardButton("🎬 Free VIP Teasers", callback_data="cmd_teaser")
     )
     # Row 2: Shopping
     markup.add(
