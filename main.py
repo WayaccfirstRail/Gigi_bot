@@ -3845,7 +3845,8 @@ Use the buttons below for guided setup, or use manual commands:
 • <code>/owner_set_vip_description [text]</code>
 
 💡 <b>Pricing Tips:</b>
-• 399 Stars ≈ $4 USD (current default)
+• Range: 1 - 150,000 Stars (399 current default)
+• 399 Stars ≈ $4 USD | 1,000 Stars ≈ $10 USD
 • Higher price = more exclusive feeling
 • 30-day duration balances value and recurring revenue
 """
@@ -4897,13 +4898,14 @@ Add a description that VIP members will see:
 💡 Enter the new VIP price in Telegram Stars (just the number):
 
 <b>Examples:</b>
-• 50
-• 190
-• 200
+• 399 (current default)
+• 500
+• 1000
+• 5000
 
 💡 <b>Pricing Guide:</b>
-• 1 Star ≈ $0.01 USD
-• Current default: 399 Stars ≈ $4 USD
+• Range: 1 - 150,000 Stars
+• 399 Stars ≈ $4 USD | 1,000 Stars ≈ $10 USD
 • Higher prices make VIP feel more exclusive
 
 ✏️ <b>Just type the number and send:</b>
