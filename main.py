@@ -980,8 +980,8 @@ def handle_vip_settings_input(message):
             # Handle VIP price input
             try:
                 price = int(user_input)
-                if price <= 0:
-                    bot.send_message(message.chat.id, "❌ Price must be a positive number! Please try again:")
+                if price <= 0 or price > 150000:
+                    bot.send_message(message.chat.id, "❌ Price must be between 1 and 150,000 Stars! Please try again:")
                     return
                 
                 # Update VIP price setting
@@ -998,10 +998,10 @@ def handle_vip_settings_input(message):
                 success_text = f"""
 ✅ <b>VIP PRICE UPDATED SUCCESSFULLY!</b> ✅
 
-💰 <b>New VIP Price:</b> {price} Stars
+💰 <b>New VIP Price:</b> {price:,} Stars
 💵 <b>Approximate USD:</b> ${price * 0.01:.2f}
 
-🎉 All new VIP subscriptions will now cost {price} Stars!
+🎉 All new VIP subscriptions will now cost {price:,} Stars!
 """
                 
                 markup = types.InlineKeyboardMarkup()
@@ -1011,7 +1011,7 @@ def handle_vip_settings_input(message):
                 bot.send_message(message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
                 
             except ValueError:
-                bot.send_message(message.chat.id, "❌ Invalid price! Please enter a number (e.g., 1, 5, 10, 20):")
+                bot.send_message(message.chat.id, "❌ Invalid price! Please enter a number (e.g., 399, 500, 1000, 5000):")
                 return
         
         elif setting == 'duration':
