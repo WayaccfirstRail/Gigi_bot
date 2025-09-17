@@ -2312,7 +2312,7 @@ After you send the file, I'll ask for the name, price, and description.
     
     bot.send_message(message.chat.id, upload_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') not in ['teaser', 'vip_content'] and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') not in ['teaser', 'vip_content', 'vip_teaser'] and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_file_upload(message):
     """Handle file uploads for content creation (excludes teaser sessions)"""
     logger.info(f"General content handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
@@ -2741,11 +2741,12 @@ def handle_vip_file_update_upload(message):
     else:
         bot.send_message(message.chat.id, "❌ Unsupported file type for VIP content. Please send photos, videos, or GIFs only.")
 
-@bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_file')
 def handle_vip_teaser_upload(message):
     """Handle VIP teaser file upload from owner"""
-    logger.info(f"VIP teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
-    session = upload_sessions[OWNER_ID]
+    teaser_key = f"{OWNER_ID}_vip_teaser"
+    logger.info(f"VIP teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(teaser_key, 'None')}")
+    session = upload_sessions[teaser_key]
     
     if session['step'] == 'waiting_for_file':
         # Store file information
@@ -2940,10 +2941,11 @@ def handle_vip_description_message(message):
     """Handle VIP content description input from message"""
     handle_vip_description_input(message)
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_description')
 def handle_vip_teaser_description(message):
     """Handle VIP teaser description from owner"""
-    session = upload_sessions[OWNER_ID]
+    teaser_key = f"{OWNER_ID}_vip_teaser"
+    session = upload_sessions[teaser_key]
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -2982,8 +2984,8 @@ def handle_vip_teaser_description(message):
         bot.send_message(OWNER_ID, f"❌ Error saving VIP teaser: {str(e)}")
     
     # Clear upload session
-    if OWNER_ID in upload_sessions:
-        del upload_sessions[OWNER_ID]
+    if teaser_key in upload_sessions:
+        del upload_sessions[teaser_key]
 
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
 def handle_teaser_description(message):
@@ -3979,8 +3981,9 @@ def start_vip_teaser_upload_session(chat_id, user_id):
         bot.send_message(chat_id, "❌ Access denied. This is an owner-only command.")
         return
     
-    # Initialize VIP teaser upload session
-    upload_sessions[OWNER_ID] = {
+    # Initialize VIP teaser upload session with dedicated key
+    teaser_key = f"{OWNER_ID}_vip_teaser"
+    upload_sessions[teaser_key] = {
         'type': 'vip_teaser',
         'step': 'waiting_for_file',
         'data': {}
@@ -5018,12 +5021,16 @@ Add a description that VIP members will see:
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "skip_vip_teaser_description":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser':
-            session = upload_sessions[OWNER_ID]
+        teaser_key = f"{OWNER_ID}_vip_teaser"
+        if call.from_user.id == OWNER_ID and teaser_key in upload_sessions and upload_sessions[teaser_key].get('type') == 'vip_teaser':
+            session = upload_sessions[teaser_key]
             description = "Exclusive VIP teaser content"
             
             try:
                 add_teaser(session['file_path'], session['file_type'], description, vip_only=True)
+                
+                # Send notifications to all VIP subscribers about the new VIP teaser
+                notification_stats = notify_vip_teaser_uploaded(description)
                 
                 success_text = f"""
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
@@ -5032,6 +5039,13 @@ Add a description that VIP members will see:
 📝 <b>Description:</b> {description}
 
 💎 Your VIP teaser is now live! VIP members will see this exclusive content when they use /teaser.
+
+📱 <b>VIP Notifications Sent:</b>
+✅ Delivered to {notification_stats['sent']} VIP members
+🚫 {notification_stats['blocked']} users have blocked the bot
+❌ {notification_stats['failed']} delivery failures
+
+🔄 You can upload multiple VIP teasers - the most recent one will be shown first to VIP members.
 """
                 
                 markup = types.InlineKeyboardMarkup()
@@ -5044,8 +5058,8 @@ Add a description that VIP members will see:
                 bot.send_message(call.message.chat.id, f"❌ Error saving VIP teaser: {str(e)}")
             
             # Clear upload session
-            if OWNER_ID in upload_sessions:
-                del upload_sessions[OWNER_ID]
+            if teaser_key in upload_sessions:
+                del upload_sessions[teaser_key]
     elif call.data.startswith("delete_vip_teaser_"):
         if call.from_user.id == OWNER_ID:
             teaser_id = int(call.data.replace("delete_vip_teaser_", ""))
