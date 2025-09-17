@@ -2154,7 +2154,9 @@ Use the buttons below to navigate - no need to type commands!
         types.InlineKeyboardButton("📂 My Content", callback_data="my_content"),
         types.InlineKeyboardButton("💎 VIP Library", callback_data="vip_content_catalog")
     )
-    # Row 4: Help refresh
+    # Row 4: VIP Teasers
+    markup.add(types.InlineKeyboardButton("🎬 VIP Teasers", callback_data="vip_teasers_collection"))
+    # Row 5: Help refresh
     markup.add(types.InlineKeyboardButton("🔄 Refresh Help", callback_data="cmd_help"))
     
     bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode='Markdown')
