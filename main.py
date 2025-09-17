@@ -4368,14 +4368,14 @@ def owner_set_vip_price(message):
         
         new_price = int(parts[1])
         
-        if new_price < 1 or new_price > 2500:
-            bot.send_message(message.chat.id, "❌ Price must be between 1 and 2500 Stars.")
+        if new_price < 1 or new_price > 150000:
+            bot.send_message(message.chat.id, "❌ Price must be between 1 and 150,000 Stars.")
             return
         
         # Update VIP price setting
         update_vip_settings('vip_price_stars', str(new_price))
         
-        bot.send_message(message.chat.id, f"✅ VIP subscription price updated to {new_price} Stars!")
+        bot.send_message(message.chat.id, f"✅ VIP subscription price updated to {new_price:,} Stars!")
         
     except ValueError:
         bot.send_message(message.chat.id, "❌ Invalid price. Please enter a number.")
@@ -4457,8 +4457,8 @@ def owner_edit_price(message):
         content_name = parts[1]
         new_price = int(parts[2])
         
-        if new_price < 0 or new_price > 2500:
-            bot.send_message(message.chat.id, "❌ Price must be between 0 and 2500 Stars.")
+        if new_price < 0 or new_price > 150000:
+            bot.send_message(message.chat.id, "❌ Price must be between 0 and 150,000 Stars.")
             return
         
         # Update content price
@@ -4470,7 +4470,7 @@ def owner_edit_price(message):
         conn.close()
         
         if updated_count > 0:
-            bot.send_message(message.chat.id, f"✅ Price for '{content_name}' updated to {new_price} Stars!")
+            bot.send_message(message.chat.id, f"✅ Price for '{content_name}' updated to {new_price:,} Stars!")
         else:
             bot.send_message(message.chat.id, f"❌ Content '{content_name}' not found.")
         
