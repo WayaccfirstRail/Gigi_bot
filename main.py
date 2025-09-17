@@ -612,7 +612,7 @@ Step into my world and Browse the exclusive content you’ve been craving.
         
         library_text += f"✨ <b>{safe_name}</b>\n"
         library_text += f"📅 Purchased: {formatted_date}\n"
-        library_text += f"💰 Paid: {price_paid} Stars\n"
+        library_text += f"💰 Paid: {price_paid:,} Stars\n"
         library_text += f"📝 {safe_description}\n\n"
         
         # Add re-access button for each item
@@ -682,7 +682,7 @@ def show_analytics_dashboard(chat_id):
 
 💰 <b>Revenue:</b>
 • Total Revenue: {total_revenue:,} Stars
-• Average per Customer: {avg_spent:.0f} Stars
+• Average per Customer: {avg_spent:,.0f} Stars
 • Conversion Rate: {(paying_users/max(total_users,1)*100):.1f}%
 
 📱 <b>Content:</b>
@@ -696,7 +696,7 @@ def show_analytics_dashboard(chat_id):
         for i, (first_name, username, spent, interactions) in enumerate(top_customers):
             safe_name = (first_name or 'N/A').replace('<', '&lt;').replace('>', '&gt;')
             safe_username = (username or 'none').replace('<', '&lt;').replace('>', '&gt;')
-            analytics_text += f"\n{i+1}. {safe_name} (@{safe_username}) - {spent} Stars"
+            analytics_text += f"\n{i+1}. {safe_name} (@{safe_username}) - {spent:,} Stars"
     else:
         analytics_text += "\nNo paying customers yet."
     
@@ -1907,7 +1907,7 @@ def show_vip_access(chat_id, user_id):
 """
         
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(f"🔄 Extend VIP ({vip_price} Stars)", callback_data="buy_vip"))
+        markup.add(types.InlineKeyboardButton(f"🔄 Extend VIP ({vip_price:,} Stars)", callback_data="buy_vip"))
         markup.add(types.InlineKeyboardButton("🎬 VIP Teasers Collection", callback_data="vip_teasers_collection"))
         markup.add(types.InlineKeyboardButton("🛒 Browse Content", callback_data="browse_content"))
         markup.add(types.InlineKeyboardButton("🏠 Back to Main", callback_data="cmd_start"))
@@ -1935,7 +1935,7 @@ def show_vip_access(chat_id, user_id):
 """
         
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(f"💎 Subscribe VIP ({vip_price} Stars)", callback_data="buy_vip"))
+        markup.add(types.InlineKeyboardButton(f"💎 Subscribe VIP ({vip_price:,} Stars)", callback_data="buy_vip"))
         markup.add(types.InlineKeyboardButton("🎬 View Free VIP Teasers", callback_data="teasers"))
         markup.add(types.InlineKeyboardButton("🏠 Back to Main", callback_data="cmd_start"))
     
@@ -2001,8 +2001,8 @@ def show_content_catalog(chat_id, user_id=None):
                 catalog_text += f"✅ <b>OWNED</b> - You already purchased this!\n"
                 markup.add(types.InlineKeyboardButton(f"🎁 Access {name} (Owned)", callback_data=f"access_{name}"))
             else:
-                catalog_text += f"💰 {price} Stars\n"
-                markup.add(types.InlineKeyboardButton(f"⭐ Buy {name} ({price} Stars)", callback_data=f"buy_{name}"))
+                catalog_text += f"💰 {price:,} Stars\n"
+                markup.add(types.InlineKeyboardButton(f"⭐ Buy {name} ({price:,} Stars)", callback_data=f"buy_{name}"))
             
             catalog_text += f"📝 {safe_description}\n\n"
         
@@ -2226,7 +2226,7 @@ def owner_add_content(message):
         success_message = f"""✅ **CONTENT ADDED SUCCESSFULLY!** ✅
 
 📦 **Name:** {name}
-💰 **Price:** {price_stars} Stars
+💰 **Price:** {price_stars:,} Stars
 📝 **Description:** {description}{file_type_info}
 🔄 **File:** {"Telegram File ID (converted from URL)" if file_path.startswith('http') else "Direct Path/ID"}
 
