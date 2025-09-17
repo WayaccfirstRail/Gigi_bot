@@ -2472,7 +2472,7 @@ Examples: 25, 50, 100
             session['step'] = 'waiting_for_description'
             
             desc_text = f"""
-✅ <b>Price set:</b> {price} Stars
+✅ <b>Price set:</b> {price:,} Stars
 
 <b>Step 4:</b> Add a description (optional)
 Write a short description that customers will see:
@@ -2535,7 +2535,7 @@ def save_uploaded_content(session):
 
 📋 **Content Details:**
 • Name: {session['name']}
-• Price: {session['price']} Stars
+• Price: {session['price']:,} Stars
 • Description: {session['description']}
 • Failed URL: {session['file_path']}
 
@@ -2568,7 +2568,7 @@ def save_uploaded_content(session):
 💎 <b>VIP CONTENT ADDED SUCCESSFULLY!</b> 💎
 
 📦 <b>Name:</b> {session['name']}
-💰 <b>Price:</b> {session['price']} Stars
+💰 <b>Price:</b> {session['price']:,} Stars
 📝 <b>Description:</b> {session['description']}
 📁 <b>Type:</b> {session.get('file_type', 'File')}{file_type_info} (VIP Exclusive)
 
@@ -2582,7 +2582,7 @@ Non-VIP users can purchase VIP subscriptions to access this content.
 🎉 <b>CONTENT ADDED SUCCESSFULLY!</b> 🎉
 
 📦 <b>Name:</b> {session['name']}
-💰 <b>Price:</b> {session['price']} Stars
+💰 <b>Price:</b> {session['price']:,} Stars
 📝 <b>Description:</b> {session['description']}
 📁 <b>Type:</b> {session.get('file_type', 'File')}{file_type_info}
 
