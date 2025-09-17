@@ -196,15 +196,6 @@ def init_database():
     for key, text in default_responses:
         cursor.execute('INSERT OR IGNORE INTO responses (key, text) VALUES (?, ?)', (key, text))
     
-    # Insert sample content
-    sample_content = [
-        ('photo_set_1', 25, 'https://example.com/photo1.jpg', 'Exclusive photo set - Behind the scenes', datetime.datetime.now().isoformat(), 'browse'),
-        ('video_preview', 50, 'https://example.com/video1.mp4', 'Special video content just for you', datetime.datetime.now().isoformat(), 'browse')
-    ]
-    
-    for name, price, path, desc, date, content_type in sample_content:
-        cursor.execute('INSERT OR IGNORE INTO content_items (name, price_stars, file_path, description, created_date, content_type) VALUES (?, ?, ?, ?, ?, ?)', 
-                      (name, price, path, desc, date, content_type))
     
     conn.commit()
     conn.close()
