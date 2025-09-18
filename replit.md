@@ -6,15 +6,19 @@ The bot provides a dual interface: fans can browse teasers, purchase content wit
 
 # Recent Changes
 
-**September 17, 2025 - Replit Environment Setup**
+**September 18, 2025 - Complete Replit Environment Setup**
+- ✅ Successfully configured Flask web server to run on 0.0.0.0:5000 with webview output
+- ✅ Database initialization working properly with SQLite (content_bot.db) - existing data preserved
+- ✅ Health endpoints working at / and /health for monitoring
+- ✅ Production deployment configured with Gunicorn for VM target to maintain persistent operation
+- ✅ Web-only mode implemented - Flask server runs even without Telegram credentials
+- ✅ Error handling improved for graceful degradation when bot tokens are missing
+- ⚠️ **REQUIRED SETUP**: Add BOT_TOKEN and OWNER_ID to Replit Secrets to enable full Telegram bot functionality
+
+**September 17, 2025 - Initial Replit Environment Setup**
 - Successfully configured the Telegram bot to run in Replit environment
 - Set up required secrets: BOT_TOKEN and OWNER_ID through Replit Secrets
-- Configured Flask web server on port 5000 with webview output for monitoring
-- Database initialization working properly with SQLite (content_bot.db)
 - Bot polling and Flask server running concurrently via threading
-- Deployment configured for VM target to maintain persistent operation
-- Health endpoints configured at / and /health for monitoring
-- Production deployment configured with Gunicorn for scaling
 
 # User Preferences
 
@@ -84,3 +88,38 @@ Preferred communication style: Simple, everyday language.
 ## File Storage
 - **Local File System**: Media content storage on hosting platform
 - **URL References**: Support for external content hosting through direct links
+
+# Setup Instructions
+
+## Current Status
+✅ **Web Server**: Ready and running - the Flask application is operational  
+✅ **Database**: SQLite database initialized and working  
+✅ **Deployment**: Configured for production with Gunicorn  
+⚠️ **Telegram Bot**: Requires credentials to be fully functional  
+
+## To Enable Full Telegram Bot Functionality
+
+The application is currently running in **web-only mode**. To enable the complete Telegram bot features, you need to:
+
+### 1. Create a Telegram Bot
+- Message @BotFather on Telegram
+- Use the `/newbot` command
+- Follow the instructions to get your **BOT_TOKEN**
+
+### 2. Get Your Telegram User ID
+- Message @userinfobot on Telegram to get your **OWNER_ID** (your Telegram user ID number)
+
+### 3. Add Secrets in Replit
+- Go to the "Secrets" tab in your Replit environment (lock icon in sidebar)
+- Add these secrets:
+  - `BOT_TOKEN`: Your bot token from BotFather
+  - `OWNER_ID`: Your Telegram user ID number
+
+### 4. Restart the Application
+Once you've added the secrets, the application will automatically restart and detect the new credentials.
+
+## Current Functionality Without Bot Credentials
+- ✅ Web server health monitoring at `/` and `/health` endpoints
+- ✅ Database operations and content management system
+- ✅ All backend logic and data structures
+- ❌ Telegram bot commands and messaging (requires credentials)
