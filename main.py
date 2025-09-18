@@ -1975,7 +1975,7 @@ def show_content_catalog(chat_id, user_id=None):
     conn.close()
     
     if items:
-        catalog_text = "<b>BROWSE CONTENT CATALOG</b> 🛒\n\n"
+        catalog_text = "<b>BROWSING CONTENT</b> 🛒\n\n"
         catalog_text += "💰 Purchase Specific items with Telegram Stars\n"
         catalog_text += "💡 <b>Tip:</b> VIP members get access to exclusive VIP content library!\n\n"
         
