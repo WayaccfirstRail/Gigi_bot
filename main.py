@@ -2141,7 +2141,7 @@ Use the buttons below to navigate - no need to type commands!
     )
     # Row 3: My Content and VIP Library
     markup.add(
-        types.InlineKeyboardButton("📂 My Collection", callback_data="my_content"),
+        types.InlineKeyboardButton("📂 My Content", callback_data="my_content"),
         types.InlineKeyboardButton("💎 VIP Collection", callback_data="vip_content_catalog")
     )
     # Row 4: VIP Teasers
