@@ -39,6 +39,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 # Dictionary to store temporary upload data for guided content creation
 upload_sessions = {}
 
+# Dictionary to store notification composition sessions
+notification_sessions = {}
+
 # Database setup
 def init_database():
     """Initialize SQLite database with required tables"""
@@ -3261,6 +3264,18 @@ def owner_help(message):
 • `/owner_analytics` - Detailed analytics dashboard
 • `/owner_list_vips` - View active VIP subscribers
 
+⭐ **Loyal Fan Management:**
+• Mark your best customers as loyal fans
+• Track reasons and dates when fans were marked
+• View all loyal fans with their details
+• Remove loyal status when needed
+
+📢 **Notification System:**
+• Send targeted messages to specific user groups
+• Notify all users, VIP only, or non-VIP only
+• Interactive message composition interface
+• Track delivery statistics and blocked users
+
 🤖 **Bot Configuration:**
 • `/owner_set_response [key] [text]` - Update Responses
   Keys: greeting, question, compliment, default
@@ -3287,6 +3302,8 @@ def owner_help(message):
     markup.add(types.InlineKeyboardButton("📦 Content Management", callback_data="content_management_menu"))
     markup.add(types.InlineKeyboardButton("🎬 Teaser Management", callback_data="teaser_management_menu"))
     markup.add(types.InlineKeyboardButton("👥 User Management", callback_data="user_management_menu"))
+    markup.add(types.InlineKeyboardButton("⭐ Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+    markup.add(types.InlineKeyboardButton("📢 Notification System", callback_data="notification_management_menu"))
     markup.add(types.InlineKeyboardButton("🤖 Bot Configuration", callback_data="bot_config_menu"))
     
     bot.send_message(message.chat.id, help_text, reply_markup=markup, parse_mode='Markdown')
@@ -3624,6 +3641,59 @@ Choose an action below to configure bot settings:
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("✏️ Set Responses", callback_data="show_set_responses_help"))
     markup.add(types.InlineKeyboardButton("⚙️ Other Settings", callback_data="show_other_settings_help"))
+    markup.add(types.InlineKeyboardButton("🔙 Back to Owner Help", callback_data="owner_help"))
+    
+    bot.send_message(chat_id, menu_text, reply_markup=markup, parse_mode='Markdown')
+
+def show_loyal_fan_management_menu(chat_id):
+    """Show Loyal Fan Management section menu"""
+    # Get loyal fan count
+    conn = sqlite3.connect('content_bot.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM loyal_fans')
+    loyal_count = cursor.fetchone()[0]
+    conn.close()
+    
+    menu_text = f"""
+⭐ *LOYAL FAN MANAGEMENT* ⭐
+
+Manage your most valuable customers and superfans.
+
+📊 **Current Status:**
+• Loyal Fans: {loyal_count}
+
+Choose an action below:
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("⭐ Mark New Loyal Fan", callback_data="mark_loyal_fan"),
+        types.InlineKeyboardButton("📋 View All Loyal Fans", callback_data="list_loyal_fans")
+    )
+    markup.add(types.InlineKeyboardButton("❌ Remove Loyal Status", callback_data="remove_loyal_fan"))
+    markup.add(types.InlineKeyboardButton("🔙 Back to Owner Help", callback_data="owner_help"))
+    
+    bot.send_message(chat_id, menu_text, reply_markup=markup, parse_mode='Markdown')
+
+def show_notification_management_menu(chat_id):
+    """Show Notification System section menu"""
+    menu_text = """
+📢 *NOTIFICATION SYSTEM* 📢
+
+Send targeted messages to your users.
+
+🎯 **Target Groups:**
+• All Users - Everyone who has used the bot
+• VIP Members Only - Active VIP subscribers
+• Non-VIP Users - Users without VIP status
+
+Choose who to notify:
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(types.InlineKeyboardButton("📢 Notify All Users", callback_data="notify_all_users"))
+    markup.add(types.InlineKeyboardButton("💎 Notify VIP Members", callback_data="notify_vip_users"))
+    markup.add(types.InlineKeyboardButton("👥 Notify Non-VIP Users", callback_data="notify_non_vip_users"))
     markup.add(types.InlineKeyboardButton("🔙 Back to Owner Help", callback_data="owner_help"))
     
     bot.send_message(chat_id, menu_text, reply_markup=markup, parse_mode='Markdown')
@@ -4553,6 +4623,245 @@ def owner_edit_file_path(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Error updating file path: {str(e)}")
 
+# Loyal Fan Management Functions
+
+def show_mark_loyal_fan_interface(chat_id):
+    """Show interface to mark a user as loyal fan"""
+    # Get all users (paying customers prioritized)
+    conn = sqlite3.connect('content_bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, u.interaction_count
+        FROM users u
+        LEFT JOIN loyal_fans l ON u.user_id = l.user_id
+        WHERE l.user_id IS NULL
+        ORDER BY u.total_stars_spent DESC, u.interaction_count DESC
+        LIMIT 20
+    ''')
+    non_loyal_users = cursor.fetchall()
+    conn.close()
+    
+    if not non_loyal_users:
+        empty_text = """
+⭐ <b>MARK LOYAL FAN</b> ⭐
+
+📭 <b>All users are already marked as loyal fans!</b>
+
+Or no users found in database yet.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+        
+        bot.send_message(chat_id, empty_text, reply_markup=markup, parse_mode='HTML')
+        return
+    
+    mark_text = f"""
+⭐ <b>MARK LOYAL FAN</b> ⭐
+
+👥 <b>Select a user to mark as loyal fan:</b>
+
+Found {len(non_loyal_users)} user(s) not yet marked as loyal. Top customers shown first:
+
+💡 <b>Tip:</b> Mark your best customers and most engaged fans!
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for user_id, username, first_name, stars_spent, interactions in non_loyal_users:
+        # Escape HTML special characters
+        safe_username = (username or 'none').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        safe_first_name = (first_name or 'N/A').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Create button text with user details
+        button_text = f"⭐ {safe_first_name} (@{safe_username}) | {stars_spent}⭐ | {interactions} msgs"
+        
+        markup.add(types.InlineKeyboardButton(button_text, callback_data=f"select_loyal_{user_id}"))
+    
+    markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+    
+    bot.send_message(chat_id, mark_text, reply_markup=markup, parse_mode='HTML')
+
+def show_loyal_fans_list(chat_id):
+    """Show all loyal fans with their details"""
+    conn = sqlite3.connect('content_bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, 
+               l.reason, l.date_marked
+        FROM loyal_fans l
+        JOIN users u ON l.user_id = u.user_id
+        ORDER BY l.date_marked DESC
+    ''')
+    loyal_fans = cursor.fetchall()
+    conn.close()
+    
+    if not loyal_fans:
+        empty_text = """
+📋 <b>LOYAL FANS LIST</b> 📋
+
+📭 <b>No loyal fans yet!</b>
+
+Start marking your best customers as loyal fans to track your VIP community.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("⭐ Mark First Loyal Fan", callback_data="mark_loyal_fan"))
+        markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+        
+        bot.send_message(chat_id, empty_text, reply_markup=markup, parse_mode='HTML')
+        return
+    
+    loyal_text = f"""
+📋 <b>LOYAL FANS LIST</b> 📋
+
+⭐ <b>Your {len(loyal_fans)} loyal fan(s):</b>
+
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for user_id, username, first_name, stars_spent, reason, date_marked in loyal_fans:
+        # Escape HTML special characters
+        safe_username = (username or 'none').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        safe_first_name = (first_name or 'N/A').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        safe_reason = (reason or 'No reason specified').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Format date
+        try:
+            date_obj = datetime.datetime.fromisoformat(date_marked)
+            formatted_date = date_obj.strftime("%b %d, %Y")
+        except:
+            formatted_date = "Unknown"
+        
+        loyal_text += f"⭐ <b>{safe_first_name} (@{safe_username})</b>\n"
+        loyal_text += f"   💰 {stars_spent} Stars spent\n"
+        loyal_text += f"   📝 Reason: {safe_reason}\n"
+        loyal_text += f"   📅 Marked: {formatted_date}\n\n"
+        
+        # Add remove button for each loyal fan
+        markup.add(types.InlineKeyboardButton(f"❌ Remove {first_name}", callback_data=f"remove_loyal_{user_id}"))
+    
+    markup.add(types.InlineKeyboardButton("⭐ Mark New Loyal Fan", callback_data="mark_loyal_fan"))
+    markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+    
+    bot.send_message(chat_id, loyal_text, reply_markup=markup, parse_mode='HTML')
+
+def show_remove_loyal_fan_interface(chat_id):
+    """Show interface to remove loyal fan status"""
+    conn = sqlite3.connect('content_bot.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.user_id, u.username, u.first_name, l.reason, l.date_marked
+        FROM loyal_fans l
+        JOIN users u ON l.user_id = u.user_id
+        ORDER BY l.date_marked DESC
+    ''')
+    loyal_fans = cursor.fetchall()
+    conn.close()
+    
+    if not loyal_fans:
+        empty_text = """
+❌ <b>REMOVE LOYAL STATUS</b> ❌
+
+📭 <b>No loyal fans to remove!</b>
+
+You haven't marked any users as loyal fans yet.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("⭐ Mark First Loyal Fan", callback_data="mark_loyal_fan"))
+        markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+        
+        bot.send_message(chat_id, empty_text, reply_markup=markup, parse_mode='HTML')
+        return
+    
+    remove_text = f"""
+❌ <b>REMOVE LOYAL STATUS</b> ❌
+
+⚠️ <b>Select a loyal fan to remove their status:</b>
+
+Found {len(loyal_fans)} loyal fan(s). This action cannot be undone!
+"""
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    for user_id, username, first_name, reason, date_marked in loyal_fans:
+        # Escape HTML special characters
+        safe_username = (username or 'none').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        safe_first_name = (first_name or 'N/A').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        # Format date
+        try:
+            date_obj = datetime.datetime.fromisoformat(date_marked)
+            formatted_date = date_obj.strftime("%b %d")
+        except:
+            formatted_date = "Unknown"
+        
+        # Create button text
+        button_text = f"❌ {safe_first_name} (@{safe_username}) | {formatted_date}"
+        
+        markup.add(types.InlineKeyboardButton(button_text, callback_data=f"confirm_remove_loyal_{user_id}"))
+    
+    markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
+    
+    bot.send_message(chat_id, remove_text, reply_markup=markup, parse_mode='HTML')
+
+# Notification System Functions
+
+def show_notification_composer(chat_id, target_group):
+    """Show notification composer interface"""
+    target_names = {
+        'all': 'All Users',
+        'vip': 'VIP Members',
+        'non_vip': 'Non-VIP Users'
+    }
+    
+    target_name = target_names.get(target_group, 'Unknown')
+    
+    # Get target user count
+    if target_group == 'all':
+        users = get_all_users()
+    elif target_group == 'vip':
+        users = get_vip_subscribers()
+    elif target_group == 'non_vip':
+        users = get_non_vip_users()
+    else:
+        users = []
+    
+    user_count = len(users)
+    
+    composer_text = f"""
+📢 <b>NOTIFICATION COMPOSER</b> 📢
+
+🎯 <b>Target Group:</b> {target_name}
+👥 <b>Recipients:</b> {user_count} users
+
+📝 <b>Instructions:</b>
+Send your message in your next message. It will be delivered to all {target_name.lower()}.
+
+✨ <b>Tips:</b>
+• Use HTML formatting (bold: &lt;b&gt;text&lt;/b&gt;, italic: &lt;i&gt;text&lt;/i&gt;)
+• Keep messages engaging and personal
+• Include relevant emojis for better engagement
+• Messages will be pinned for VIP notifications
+
+💡 <b>Ready to compose your message!</b>
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="notification_management_menu"))
+    
+    bot.send_message(chat_id, composer_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Store the notification session
+    global notification_sessions
+    if 'notification_sessions' not in globals():
+        notification_sessions = {}
+    
+    notification_sessions[chat_id] = {
+        'target_group': target_group,
+        'users': users,
+        'waiting_for_message': True
+    }
+
 # Callback query handlers
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -5313,6 +5622,173 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     
+    # Loyal Fan Management callbacks
+    elif call.data == "loyal_fan_management_menu":
+        if call.from_user.id == OWNER_ID:
+            show_loyal_fan_management_menu(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "mark_loyal_fan":
+        if call.from_user.id == OWNER_ID:
+            show_mark_loyal_fan_interface(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "list_loyal_fans":
+        if call.from_user.id == OWNER_ID:
+            show_loyal_fans_list(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "remove_loyal_fan":
+        if call.from_user.id == OWNER_ID:
+            show_remove_loyal_fan_interface(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data.startswith("select_loyal_"):
+        if call.from_user.id == OWNER_ID:
+            user_id = int(call.data.replace("select_loyal_", ""))
+            # Start reason input session
+            upload_sessions[OWNER_ID] = {
+                'type': 'loyal_fan_reason',
+                'user_id': user_id,
+                'step': 'waiting_for_reason'
+            }
+            
+            # Get user info
+            conn = sqlite3.connect('content_bot.db')
+            cursor = conn.cursor()
+            cursor.execute('SELECT username, first_name FROM users WHERE user_id = ?', (user_id,))
+            user_info = cursor.fetchone()
+            conn.close()
+            
+            if user_info:
+                username, first_name = user_info
+                reason_text = f"""
+⭐ <b>MARK AS LOYAL FAN</b> ⭐
+
+👤 <b>Selected User:</b> {first_name} (@{username or 'none'})
+🆔 <b>User ID:</b> {user_id}
+
+📝 <b>Please provide a reason for marking this user as loyal:</b>
+
+<b>Examples:</b>
+• Big spender - purchased multiple items
+• Engaged fan - always interacts with content
+• Early supporter - joined when I started
+• VIP member - loyal subscriber
+• Helpful customer - great feedback
+
+✏️ <b>Type your reason and send:</b>
+"""
+                
+                markup = types.InlineKeyboardMarkup()
+                markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="loyal_fan_management_menu"))
+                
+                bot.send_message(call.message.chat.id, reason_text, reply_markup=markup, parse_mode='HTML')
+            else:
+                bot.send_message(call.message.chat.id, "❌ User not found.")
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data.startswith("confirm_remove_loyal_"):
+        if call.from_user.id == OWNER_ID:
+            user_id = int(call.data.replace("confirm_remove_loyal_", ""))
+            
+            # Remove loyal fan status
+            conn = sqlite3.connect('content_bot.db')
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM loyal_fans WHERE user_id = ?', (user_id,))
+            removed_count = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            if removed_count > 0:
+                bot.send_message(call.message.chat.id, "✅ Loyal fan status removed successfully!")
+            else:
+                bot.send_message(call.message.chat.id, "❌ User was not marked as loyal fan.")
+            
+            # Go back to loyal fan management
+            show_loyal_fan_management_menu(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    
+    # Notification System callbacks
+    elif call.data == "notification_management_menu":
+        if call.from_user.id == OWNER_ID:
+            show_notification_management_menu(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "notify_all_users":
+        if call.from_user.id == OWNER_ID:
+            show_notification_composer(call.message.chat.id, 'all')
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "notify_vip_users":
+        if call.from_user.id == OWNER_ID:
+            show_notification_composer(call.message.chat.id, 'vip')
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "notify_non_vip_users":
+        if call.from_user.id == OWNER_ID:
+            show_notification_composer(call.message.chat.id, 'non_vip')
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data.startswith("confirm_send_"):
+        if call.from_user.id == OWNER_ID:
+            target_group = call.data.replace("confirm_send_", "")
+            
+            # Get stored notification session
+            if call.message.chat.id in notification_sessions:
+                session = notification_sessions[call.message.chat.id]
+                message_text = session.get('message_text')
+                users = session.get('users', [])
+                
+                if message_text and users:
+                    # Send the notification
+                    target_names = {
+                        'all': 'All Users',
+                        'vip': 'VIP Members',
+                        'non_vip': 'Non-VIP Users'
+                    }
+                    
+                    target_name = target_names.get(target_group, 'Unknown')
+                    
+                    # Create basic markup for notifications
+                    notification_markup = types.InlineKeyboardMarkup()
+                    notification_markup.add(types.InlineKeyboardButton("🏠 Back to Main", callback_data="cmd_start"))
+                    
+                    # Send notification to users
+                    pin_message = target_group == 'vip'  # Pin VIP notifications
+                    stats = send_notification_to_users(users, message_text, notification_markup, pin_message)
+                    
+                    # Send confirmation to owner
+                    success_text = f"""
+✅ <b>NOTIFICATION SENT SUCCESSFULLY!</b> ✅
+
+🎯 <b>Target Group:</b> {target_name}
+✅ <b>Delivered:</b> {stats['sent']} users
+❌ <b>Failed:</b> {stats['failed']} users  
+🚫 <b>Blocked:</b> {stats['blocked']} users
+👥 <b>Total Targeted:</b> {stats['total_targeted']} users
+
+📊 <b>Delivery Rate:</b> {(stats['sent'] / max(stats['total_targeted'], 1) * 100):.1f}%
+
+💡 <b>Message sent:</b> {message_text[:100]}{'...' if len(message_text) > 100 else ''}
+"""
+                    
+                    markup = types.InlineKeyboardMarkup()
+                    markup.add(types.InlineKeyboardButton("📢 Send Another Notification", callback_data="notification_management_menu"))
+                    markup.add(types.InlineKeyboardButton("🔙 Back to Owner Help", callback_data="owner_help"))
+                    
+                    bot.send_message(call.message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
+                    
+                    # Clear the session
+                    del notification_sessions[call.message.chat.id]
+                else:
+                    bot.send_message(call.message.chat.id, "❌ Notification session expired. Please try again.")
+            else:
+                bot.send_message(call.message.chat.id, "❌ No active notification session found.")
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    
     # Answer callback to remove loading state
     bot.answer_callback_query(call.id)
 
@@ -5786,6 +6262,111 @@ def serve_content_file(file_path, content_name="Content", description=""):
     except Exception as e:
         logger.error(f"Error in serve_content_file: {e}")
         abort(500, "File serving error")
+
+# Message handlers for special interactive flows
+
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'loyal_fan_reason')
+def handle_loyal_fan_reason_input(message):
+    """Handle loyal fan reason input from owner"""
+    if upload_sessions[OWNER_ID].get('step') == 'waiting_for_reason':
+        reason = message.text.strip()
+        user_id = upload_sessions[OWNER_ID].get('user_id')
+        
+        if len(reason) < 3 or len(reason) > 200:
+            bot.send_message(message.chat.id, "❌ Reason must be between 3 and 200 characters. Please try again:")
+            return
+        
+        # Mark user as loyal fan
+        conn = sqlite3.connect('content_bot.db')
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute('SELECT first_name, username FROM users WHERE user_id = ?', (user_id,))
+        user_info = cursor.fetchone()
+        
+        if user_info:
+            first_name, username = user_info
+            
+            # Insert loyal fan record
+            now = datetime.datetime.now().isoformat()
+            cursor.execute('INSERT OR REPLACE INTO loyal_fans (user_id, reason, date_marked) VALUES (?, ?, ?)', 
+                         (user_id, reason, now))
+            conn.commit()
+            
+            success_text = f"""
+✅ <b>LOYAL FAN MARKED SUCCESSFULLY!</b> ✅
+
+👤 <b>User:</b> {first_name} (@{username or 'none'})
+📝 <b>Reason:</b> {reason}
+📅 <b>Date:</b> {datetime.datetime.now().strftime("%b %d, %Y")}
+
+⭐ This user will now show as "LOYAL" in your user analytics and listings!
+
+💡 <b>Benefits of marking loyal fans:</b>
+• Easy identification in user lists
+• Track your most valuable customers  
+• Quick recognition of top supporters
+"""
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("⭐ Mark Another Fan", callback_data="mark_loyal_fan"))
+            markup.add(types.InlineKeyboardButton("📋 View All Loyal Fans", callback_data="list_loyal_fans"))
+            markup.add(types.InlineKeyboardButton("🔙 Back to Management", callback_data="loyal_fan_management_menu"))
+            
+            bot.send_message(message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
+        else:
+            bot.send_message(message.chat.id, "❌ User not found in database.")
+        
+        conn.close()
+        
+        # Clear the session
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
+
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.chat.id in notification_sessions and notification_sessions[message.chat.id].get('waiting_for_message'))
+def handle_notification_message_input(message):
+    """Handle notification message input from owner"""
+    session = notification_sessions[message.chat.id]
+    target_group = session['target_group']
+    users = session['users']
+    notification_text = message.text
+    
+    if len(notification_text) < 1 or len(notification_text) > 4000:
+        bot.send_message(message.chat.id, "❌ Message must be between 1 and 4000 characters. Please try again:")
+        return
+    
+    # Confirm before sending
+    target_names = {
+        'all': 'All Users',
+        'vip': 'VIP Members', 
+        'non_vip': 'Non-VIP Users'
+    }
+    
+    target_name = target_names.get(target_group, 'Unknown')
+    user_count = len(users)
+    
+    # Show preview and confirmation
+    preview_text = f"""
+📢 <b>NOTIFICATION PREVIEW</b> 📢
+
+🎯 <b>Target:</b> {target_name} ({user_count} users)
+
+📝 <b>Message Preview:</b>
+{notification_text}
+
+⚠️ <b>Ready to send?</b> This will notify {user_count} users immediately!
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Send Notification", callback_data=f"confirm_send_{target_group}"))
+    markup.add(types.InlineKeyboardButton("✏️ Edit Message", callback_data=f"notify_{target_group}_users"))
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="notification_management_menu"))
+    
+    bot.send_message(message.chat.id, preview_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Store the message for confirmation
+    notification_sessions[message.chat.id]['message_text'] = notification_text
+    notification_sessions[message.chat.id]['waiting_for_message'] = False
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
