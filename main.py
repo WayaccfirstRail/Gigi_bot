@@ -1976,7 +1976,7 @@ def show_content_catalog(chat_id, user_id=None):
     
     if items:
         catalog_text = "🛒 <b>BROWSE CONTENT CATALOG</b> 🛒\n\n"
-        catalog_text += "💰 Purchase individual items with Telegram Stars\n"
+        catalog_text += "💰 Purchase Specific items with Telegram Stars\n"
         catalog_text += "💡 <b>Tip:</b> VIP members get access to exclusive VIP content library!\n\n"
         
         markup = types.InlineKeyboardMarkup()
