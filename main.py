@@ -4660,10 +4660,12 @@ def show_mark_loyal_fan_interface(chat_id):
         SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, u.interaction_count
         FROM users u
         LEFT JOIN loyal_fans l ON u.user_id = l.user_id
-        WHERE l.user_id IS NULL
+        WHERE l.user_id IS NULL 
+            AND u.user_id != ?
+            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
         ORDER BY u.total_stars_spent DESC, u.interaction_count DESC
         LIMIT 20
-    ''')
+    ''', (OWNER_ID,))
     non_loyal_users = cursor.fetchall()
     conn.close()
     
