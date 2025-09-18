@@ -43,8 +43,12 @@ if missing_credentials:
     if OWNER_ID == 0:
         OWNER_ID = 12345  # dummy ID
 
-# Initialize bot
-bot = telebot.TeleBot(BOT_TOKEN)
+# Initialize bot with proper token handling
+if BOT_TOKEN and BOT_TOKEN != "dummy_token_for_web_mode":
+    bot = telebot.TeleBot(BOT_TOKEN)
+else:
+    # Create a dummy bot object for web-only mode - need valid format
+    bot = telebot.TeleBot("12345:DUMMY_TOKEN_FOR_WEB_MODE")
 
 # Dictionary to store temporary upload data for guided content creation
 upload_sessions = {}
@@ -6017,7 +6021,9 @@ def generate_secure_access_token(content_name):
     import hmac
     
     # Use bot token as secret key - only owner knows this
-    secret_key = BOT_TOKEN.encode('utf-8')
+    # Handle case where BOT_TOKEN might be None or dummy
+    token_key = BOT_TOKEN or "dummy_key_for_web_mode"
+    secret_key = token_key.encode('utf-8')
     
     # Create message including content name and a fixed salt
     message = f"content_preview:{content_name}:owner_access".encode('utf-8')
