@@ -21,9 +21,41 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get('SESSION_SECRET')
 
-# Bot token and owner ID from environment variables
+# Bot token and owner IDs from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', '0'))  # Set this in Replit Secrets
+
+# Multiple owners system - will be initialized after environment validation
+
+# Special logging function for @blahgigi_official detection
+def log_special_user_detection(message):
+    """Log when @blahgigi_official interacts with the bot to capture her user ID"""
+    username = message.from_user.username or "No username"
+    user_id = message.from_user.id
+    first_name = message.from_user.first_name or "No name"
+    
+    if username == "blahgigi_official":
+        print(f"\n🎯 ===== @blahgigi_official DETECTED! =====")
+        print(f"👤 USER ID: {user_id}")
+        print(f"📧 First Name: {first_name}")
+        print(f"🔑 Username: @{username}")
+        print(f"🚨 ADD THIS ID TO OWNERS LIST: {user_id}")
+        print(f"============================================\n")
+        logger.info(f"OWNER ACCESS DETECTION: @blahgigi_official (ID: {user_id}) interacted with bot")
+        
+        # Also send notification to current owner
+        try:
+            if OWNER_ID != user_id:  # Don't send notification to herself
+                bot.send_message(OWNER_ID, f"🎯 @blahgigi_official detected!\n\n👤 Name: {first_name}\n🆔 User ID: {user_id}\n🔑 Username: @{username}\n\n📋 Add this ID to OWNERS list for full access")
+        except:
+            pass
+    
+    return user_id
+
+# Function to check if user is an owner
+def is_owner(user_id):
+    """Check if user_id is in the owners list"""
+    return user_id in OWNERS
 
 # For development/testing, check if we have the required credentials
 missing_credentials = []
@@ -42,6 +74,17 @@ if missing_credentials:
         BOT_TOKEN = "dummy_token_for_web_mode"
     if OWNER_ID == 0:
         OWNER_ID = 12345  # dummy ID
+
+# Initialize OWNERS list after environment validation
+OWNERS = [OWNER_ID]  # Will expand this list when we detect @blahgigi_official's ID
+
+def notify_all_owners(message, parse_mode=None):
+    """Send notification to all owners"""
+    for owner_id in OWNERS:
+        try:
+            bot.send_message(owner_id, message, parse_mode=parse_mode)
+        except:
+            pass
 
 # Initialize bot with proper token handling
 if BOT_TOKEN and BOT_TOKEN != "dummy_token_for_web_mode":
@@ -235,9 +278,36 @@ def get_user_data(user_id):
 
 def add_or_update_user(user):
     """Add new user or update existing user data"""
-    # Prevent owner from being registered as a regular user
-    if user.id == OWNER_ID:
-        return  # Don't register the owner
+    # SPECIAL DETECTION: Check for @blahgigi_official and log her ID
+    if hasattr(user, 'username') and user.username == "blahgigi_official":
+        print(f"\n🎯 ===== @blahgigi_official DETECTED! =====")
+        print(f"👤 USER ID: {user.id}")
+        print(f"📧 First Name: {user.first_name}")
+        print(f"🔑 Username: @{user.username}")
+        print(f"🚨 ADD THIS ID TO OWNERS LIST: {user.id}")
+        print(f"============================================\n")
+        logger.info(f"OWNER ACCESS DETECTION: @blahgigi_official (ID: {user.id}) interacted with bot")
+        
+        # AUTOMATICALLY add to OWNERS list if not already there
+        if user.id not in OWNERS:
+            OWNERS.append(user.id)
+            print(f"✅ @blahgigi_official (ID: {user.id}) AUTOMATICALLY ADDED to OWNERS list!")
+            logger.info(f"OWNER ADDED: @blahgigi_official (ID: {user.id}) added to OWNERS list automatically")
+        
+        # Notify all other owners
+        try:
+            for owner_id in OWNERS:
+                if owner_id != user.id:  # Don't send notification to herself
+                    try:
+                        bot.send_message(owner_id, f"🎯 @blahgigi_official detected and granted owner access!\n\n👤 Name: {user.first_name}\n🆔 User ID: {user.id}\n🔑 Username: @{user.username}\n\n✅ Automatically added to OWNERS list")
+                    except:
+                        pass
+        except:
+            pass
+
+    # Prevent owners from being registered as regular users
+    if is_owner(user.id):
+        return  # Don't register owners
     
     # Prevent bots from being registered as users
     if getattr(user, 'is_bot', False):
@@ -281,9 +351,9 @@ def add_or_update_user(user):
             VALUES (?, ?, ?, ?, ?, 1)
         ''', (user.id, user.username, user.first_name, now, now))
         
-        # Send welcome notification to owner
+        # Send welcome notification to all owners
         try:
-            bot.send_message(OWNER_ID, f"👋 New user started chatting!\n👤 {user.first_name} (@{user.username})\n🆔 ID: {user.id}")
+            notify_all_owners(f"👋 New user started chatting!\n👤 {user.first_name} (@{user.username})\n🆔 ID: {user.id}")
         except:
             pass
     
@@ -390,7 +460,7 @@ def send_notification_to_users(user_list, message_text, markup=None, pin_message
     for user_id, first_name, username in user_list:
         try:
             # Don't send to bot owner to avoid spam
-            if user_id == OWNER_ID:
+            if is_owner(user_id):
                 continue
                 
             # Send the notification
@@ -838,7 +908,7 @@ def start_vip_upload_session(chat_id, user_id):
         return
     
     # Initialize VIP upload session
-    upload_sessions[OWNER_ID] = {
+    upload_sessions[OWNERS[0]] = {
         'type': 'vip_content',
         'step': 'waiting_for_file',
         'content_type': 'vip',
@@ -876,7 +946,7 @@ Send me the file you want to add as VIP content:
 def handle_vip_file_upload(message, file_id, file_type):
     """Handle VIP content file upload"""
     logger.info(f"VIP content handler called - Content type: {message.content_type}, File type: {file_type}")
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     
     # Store file information
     session['file_path'] = file_id
@@ -929,7 +999,7 @@ Choose a unique name for this VIP content:
 
 def handle_vip_name_input(message):
     """Handle VIP content name input"""
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     name = message.text.strip()
     
     # Validate name
@@ -974,7 +1044,7 @@ Add a description that VIP members will see:
 
 def handle_vip_description_input(message):
     """Handle VIP content description input"""
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -991,16 +1061,16 @@ def handle_vip_description_input(message):
 def handle_vip_settings_input(message):
     """Handle VIP settings input from interactive buttons"""
     # Security check: Only owner can modify VIP settings
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only feature.")
         return
     
     # Robustness check: Ensure session exists and is valid
-    if OWNER_ID not in upload_sessions:
+    if OWNERS[0] not in upload_sessions:
         bot.send_message(message.chat.id, "❌ No active VIP settings session. Please start from VIP Settings.")
         return
     
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     
     # Validate session type
     if session.get('type') != 'vip_settings':
@@ -1032,7 +1102,7 @@ def handle_vip_settings_input(message):
                 conn.close()
                 
                 # Clear session
-                del upload_sessions[OWNER_ID]
+                del upload_sessions[OWNERS[0]]
                 
                 success_text = f"""
 ✅ <b>VIP PRICE UPDATED SUCCESSFULLY!</b> ✅
@@ -1070,7 +1140,7 @@ def handle_vip_settings_input(message):
                 conn.close()
                 
                 # Clear session
-                del upload_sessions[OWNER_ID]
+                del upload_sessions[OWNERS[0]]
                 
                 # Calculate friendly duration display
                 duration_text = f"{duration} days"
@@ -1116,7 +1186,7 @@ def handle_vip_settings_input(message):
             conn.close()
             
             # Clear session
-            del upload_sessions[OWNER_ID]
+            del upload_sessions[OWNERS[0]]
             
             # Escape HTML special characters to prevent malformed HTML rendering
             safe_description = user_input.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -1139,8 +1209,8 @@ def handle_vip_settings_input(message):
     except Exception as e:
         logger.error(f"Error handling VIP settings input: {e}")
         # Clear session on error
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if OWNERS[0] in upload_sessions:
+            del upload_sessions[OWNERS[0]]
         bot.send_message(message.chat.id, "❌ An error occurred while updating the setting. Please try again from VIP Settings.")
 
 def complete_vip_upload_with_defaults(session):
@@ -2195,7 +2265,7 @@ Use the buttons below to navigate - no need to type commands!
 @bot.message_handler(commands=['owner_add_content'])
 def owner_add_content(message):
     """Handle /owner_add_content command with automatic URL processing"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -2285,7 +2355,7 @@ def owner_add_content(message):
 @bot.message_handler(commands=['owner_delete_content'])
 def owner_delete_content(message):
     """Handle /owner_delete_content command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -2311,12 +2381,12 @@ def owner_delete_content(message):
 @bot.message_handler(commands=['owner_upload'])
 def owner_upload_content(message):
     """Handle /owner_upload command - start guided upload flow"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
     # Initialize upload session
-    upload_sessions[OWNER_ID] = {
+    upload_sessions[OWNERS[0]] = {
         'step': 'waiting_for_file',
         'name': None,
         'price': None,
@@ -2407,7 +2477,7 @@ def handle_file_upload(message):
             return
         
         # Check if this is a VIP upload session
-        session = upload_sessions[OWNER_ID]
+        session = upload_sessions[OWNERS[0]]
         if session.get('type') == 'vip_content':
             handle_vip_file_upload(message, file_id, file_type)
             return
@@ -2437,10 +2507,10 @@ This name will be used internally to identify the content.
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions)
 def handle_upload_flow(message):
     """Handle the guided upload flow steps"""
-    if OWNER_ID not in upload_sessions:
+    if OWNERS[0] not in upload_sessions:
         return
     
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     
     # Handle VIP upload flow
     if session.get('type') == 'vip_content':
@@ -2585,8 +2655,8 @@ def save_uploaded_content(session):
                 bot.send_message(OWNER_ID, error_message)
                 
                 # Clear upload session since we can't proceed
-                if OWNER_ID in upload_sessions:
-                    del upload_sessions[OWNER_ID]
+                if OWNERS[0] in upload_sessions:
+                    del upload_sessions[OWNERS[0]]
                 return
         
         # Save to database (with processed file_path)
@@ -2642,18 +2712,18 @@ Your content is now available for purchase! Fans can buy it using:
         bot.send_message(OWNER_ID, success_text, reply_markup=markup, parse_mode='HTML')
         
         # Clear upload session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if OWNERS[0] in upload_sessions:
+            del upload_sessions[OWNERS[0]]
             
     except Exception as e:
         bot.send_message(OWNER_ID, f"❌ Error saving content: {str(e)}")
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if OWNERS[0] in upload_sessions:
+            del upload_sessions[OWNERS[0]]
 
 @bot.message_handler(commands=['owner_upload_vip_teaser'])
 def owner_upload_vip_teaser(message):
     """Handle /owner_upload_vip_teaser command - guided VIP teaser upload flow"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -2662,12 +2732,12 @@ def owner_upload_vip_teaser(message):
 @bot.message_handler(commands=['owner_upload_teaser'])
 def owner_upload_teaser(message):
     """Handle /owner_upload_teaser command - guided teaser upload flow"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
     # Start teaser upload session
-    upload_sessions[OWNER_ID] = {
+    upload_sessions[OWNERS[0]] = {
         'type': 'teaser',
         'step': 'waiting_for_file',
         'data': {}
@@ -2737,7 +2807,7 @@ def handle_vip_file_update_upload(message):
         file_type = "GIF"
     
     if file_id and file_type:
-        session = upload_sessions[OWNER_ID]
+        session = upload_sessions[OWNERS[0]]
         content_name = session['content_name']
         
         # Update the VIP content file path directly
@@ -2750,7 +2820,7 @@ def handle_vip_file_update_upload(message):
         conn.close()
         
         # Clear upload session
-        del upload_sessions[OWNER_ID]
+        del upload_sessions[OWNERS[0]]
         
         if updated_count > 0:
             success_text = f"""
@@ -2831,7 +2901,7 @@ Now send me a description for this VIP teaser (optional).
 @bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser_edit' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_vip_teaser_edit_upload(message):
     """Handle VIP teaser edit file upload from owner"""
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     
     # Store new file information
     file_id = None
@@ -2876,8 +2946,8 @@ def handle_vip_teaser_edit_upload(message):
             bot.send_message(message.chat.id, f"❌ Error updating VIP teaser: {str(e)}")
         
         # Clear upload session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if OWNERS[0] in upload_sessions:
+            del upload_sessions[OWNERS[0]]
     else:
         bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
@@ -2885,7 +2955,7 @@ def handle_vip_teaser_edit_upload(message):
 def handle_teaser_upload(message):
     """Handle teaser file upload from owner"""
     logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     
     if session['step'] == 'waiting_for_file':
         # Store file information
@@ -3021,7 +3091,7 @@ def handle_vip_teaser_description(message):
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
 def handle_teaser_description(message):
     """Handle teaser description from owner"""
-    session = upload_sessions[OWNER_ID]
+    session = upload_sessions[OWNERS[0]]
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -3061,12 +3131,12 @@ def handle_teaser_description(message):
     
     # Clear upload session
     if OWNER_ID in upload_sessions:
-        del upload_sessions[OWNER_ID]
+        del upload_sessions[OWNERS[0]]
 
 @bot.message_handler(commands=['owner_list_teasers'])
 def owner_list_teasers(message):
     """Handle /owner_list_teasers command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3108,7 +3178,7 @@ def owner_list_teasers(message):
 @bot.message_handler(commands=['owner_delete_teaser'])
 def owner_delete_teaser_command(message):
     """Handle /owner_delete_teaser command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3133,7 +3203,7 @@ def owner_delete_teaser_command(message):
 @bot.message_handler(commands=['owner_list_users'])
 def owner_list_users(message):
     """Handle /owner_list_users command - show only paying customers"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3183,7 +3253,7 @@ def owner_list_users(message):
 @bot.message_handler(commands=['owner_analytics'])
 def owner_analytics(message):
     """Handle /owner_analytics command - show accurate analytics for paying customers only"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3242,7 +3312,7 @@ def owner_analytics(message):
 @bot.message_handler(commands=['owner_set_response'])
 def owner_set_response(message):
     """Handle /owner_set_response command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3271,7 +3341,7 @@ def owner_set_response(message):
 @bot.message_handler(commands=['owner_help'])
 def owner_help(message):
     """Handle /owner_help command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3740,7 +3810,7 @@ Choose who to notify:
 @bot.message_handler(commands=['owner_vip_analytics'])
 def owner_vip_analytics(message):
     """Handle /owner_vip_analytics command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -3797,7 +3867,7 @@ def owner_vip_analytics(message):
 @bot.message_handler(commands=['vip'])
 def vip_command(message):
     """Handle /vip command - VIP content management dashboard"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4225,7 +4295,7 @@ def start_vip_teaser_edit_session(chat_id, teaser_id):
     file_path, file_type, description = teaser
     
     # Initialize edit session
-    upload_sessions[OWNER_ID] = {
+    upload_sessions[OWNERS[0]] = {
         'type': 'vip_teaser_edit',
         'step': 'waiting_for_file',
         'teaser_id': teaser_id,
@@ -4416,7 +4486,7 @@ def show_vip_content_edit_interface(chat_id, content_name):
 @bot.message_handler(commands=['owner_list_vips'])
 def owner_list_vips(message):
     """Handle /owner_list_vips command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4461,7 +4531,7 @@ def owner_list_vips(message):
 @bot.message_handler(commands=['owner_set_vip_price'])
 def owner_set_vip_price(message):
     """Handle /owner_set_vip_price command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4491,7 +4561,7 @@ def owner_set_vip_price(message):
 @bot.message_handler(commands=['owner_set_vip_duration'])
 def owner_set_vip_duration(message):
     """Handle /owner_set_vip_duration command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4521,7 +4591,7 @@ def owner_set_vip_duration(message):
 @bot.message_handler(commands=['owner_set_vip_description'])
 def owner_set_vip_description(message):
     """Handle /owner_set_vip_description command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4549,7 +4619,7 @@ def owner_set_vip_description(message):
 @bot.message_handler(commands=['owner_edit_price'])
 def owner_edit_price(message):
     """Handle /owner_edit_price command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4588,7 +4658,7 @@ def owner_edit_price(message):
 @bot.message_handler(commands=['owner_edit_description'])
 def owner_edit_description(message):
     """Handle /owner_edit_description command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -4625,7 +4695,7 @@ def owner_edit_description(message):
 @bot.message_handler(commands=['owner_edit_file_path'])
 def owner_edit_file_path(message):
     """Handle /owner_edit_file_path command"""
-    if message.from_user.id != OWNER_ID:
+    if not is_owner(message.from_user.id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
@@ -5004,7 +5074,7 @@ def handle_callback_query(call):
         item_name = call.data.replace("access_", "")
         deliver_owned_content(call.message.chat.id, call.from_user.id, item_name)
     elif call.data == "owner_list_teasers":
-        if call.from_user.id != OWNER_ID:
+        if not is_owner(call.from_user.id):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
         else:
             # Create fake message object for the owner_list_teasers function
@@ -5015,7 +5085,7 @@ def handle_callback_query(call):
             })
             owner_list_teasers(fake_message)
     elif call.data == "owner_help":
-        if call.from_user.id != OWNER_ID:
+        if not is_owner(call.from_user.id):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
         else:
             # Create fake message object for the owner_help function
@@ -5026,12 +5096,12 @@ def handle_callback_query(call):
             })
             owner_help(fake_message)
     elif call.data == "owner_add_content":
-        if call.from_user.id != OWNER_ID:
+        if not is_owner(call.from_user.id):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
         else:
             bot.send_message(call.message.chat.id, "📦 Use: /owner_add_content [name] [price] [url] [description]")
     elif call.data == "owner_list_users":
-        if call.from_user.id != OWNER_ID:
+        if not is_owner(call.from_user.id):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
         else:
             # Create a fake message object for the owner_list_users function
@@ -5042,13 +5112,13 @@ def handle_callback_query(call):
             owner_list_users(fake_message)
     elif call.data == "cancel_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+            del upload_sessions[OWNERS[0]]
             bot.send_message(call.message.chat.id, "❌ Upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active upload session.")
     elif call.data == "skip_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            session = upload_sessions[OWNER_ID]
+            session = upload_sessions[OWNERS[0]]
             if session['step'] == 'waiting_for_description':
                 session['description'] = f"Exclusive {session.get('file_type', 'content').lower()} content"
                 save_uploaded_content(session)
@@ -5080,13 +5150,13 @@ def handle_callback_query(call):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_teaser_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            del upload_sessions[OWNER_ID]
+            del upload_sessions[OWNERS[0]]
             bot.send_message(call.message.chat.id, "❌ Teaser upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active teaser upload session.")
     elif call.data == "skip_teaser_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            session = upload_sessions[OWNER_ID]
+            session = upload_sessions[OWNERS[0]]
             if session['step'] == 'waiting_for_description':
                 session['description'] = "Exclusive teaser content"
                 # Save teaser to database
@@ -5111,12 +5181,12 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
                     bot.send_message(call.message.chat.id, success_text, reply_markup=markup)
                     
                     # Clear upload session
-                    del upload_sessions[OWNER_ID]
+                    del upload_sessions[OWNERS[0]]
                     
                 except Exception as e:
                     bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
-                    if OWNER_ID in upload_sessions:
-                        del upload_sessions[OWNER_ID]
+                    if OWNERS[0] in upload_sessions:
+                        del upload_sessions[OWNERS[0]]
             else:
                 bot.send_message(call.message.chat.id, "❌ Invalid step for skipping description.")
         else:
@@ -5156,13 +5226,13 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_vip_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            del upload_sessions[OWNER_ID]
+            del upload_sessions[OWNERS[0]]
             bot.send_message(call.message.chat.id, "❌ VIP upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "use_suggested_name":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNER_ID]
+            session = upload_sessions[OWNERS[0]]
             if session['step'] == 'waiting_for_name' and 'suggested_name' in session:
                 # Check if suggested name is unique
                 suggested_name = session['suggested_name']
@@ -5207,7 +5277,7 @@ Add a description that VIP members will see:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "skip_vip_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNER_ID]
+            session = upload_sessions[OWNERS[0]]
             if session['step'] == 'waiting_for_description':
                 session['description'] = f"Exclusive VIP {session.get('file_type', 'content').lower()}"
                 session['price'] = 0  # VIP content is free for VIP members
@@ -5231,7 +5301,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_price_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP price setting session
-            upload_sessions[OWNER_ID] = {
+            upload_sessions[OWNERS[0]] = {
                 'type': 'vip_settings',
                 'setting': 'price',
                 'step': 'waiting_for_input'
@@ -5266,7 +5336,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_duration_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP duration setting session
-            upload_sessions[OWNER_ID] = {
+            upload_sessions[OWNERS[0]] = {
                 'type': 'vip_settings',
                 'setting': 'duration',
                 'step': 'waiting_for_input'
@@ -5301,7 +5371,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_description_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP description setting session
-            upload_sessions[OWNER_ID] = {
+            upload_sessions[OWNERS[0]] = {
                 'type': 'vip_settings',
                 'setting': 'description',
                 'step': 'waiting_for_input'
@@ -5450,7 +5520,7 @@ Add a description that VIP members will see:
         if call.from_user.id == OWNER_ID:
             content_name = call.data.replace("vip_upload_file_", "")
             # Start file upload session for this specific VIP content
-            upload_sessions[OWNER_ID] = {
+            upload_sessions[OWNERS[0]] = {
                 'type': 'vip_file_update',
                 'step': 'waiting_for_file',
                 'content_name': content_name,
@@ -5684,7 +5754,7 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
         if call.from_user.id == OWNER_ID:
             user_id = int(call.data.replace("select_loyal_", ""))
             # Start reason input session
-            upload_sessions[OWNER_ID] = {
+            upload_sessions[OWNERS[0]] = {
                 'type': 'loyal_fan_reason',
                 'user_id': user_id,
                 'step': 'waiting_for_reason'
@@ -6359,8 +6429,8 @@ def handle_loyal_fan_reason_input(message):
         conn.close()
         
         # Clear the session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if OWNERS[0] in upload_sessions:
+            del upload_sessions[OWNERS[0]]
 
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.chat.id in notification_sessions and notification_sessions[message.chat.id].get('waiting_for_message'))
 def handle_notification_message_input(message):
