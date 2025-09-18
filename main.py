@@ -25,13 +25,23 @@ app.secret_key = os.environ.get('SESSION_SECRET')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', '0'))  # Set this in Replit Secrets
 
+# For development/testing, check if we have the required credentials
+missing_credentials = []
 if not BOT_TOKEN:
-    logger.error("BOT_TOKEN not found in environment variables!")
-    exit(1)
-
+    missing_credentials.append("BOT_TOKEN")
 if OWNER_ID == 0:
-    logger.error("OWNER_ID not set! Please add your Telegram user ID to environment variables.")
-    exit(1)
+    missing_credentials.append("OWNER_ID")
+
+if missing_credentials:
+    logger.error(f"Missing required environment variables: {', '.join(missing_credentials)}")
+    logger.error("Please add these to your Replit Secrets or environment variables")
+    logger.info("Starting in web-only mode - Flask server will run for health checks")
+    
+    # Set dummy values to prevent crashes when initializing bot
+    if not BOT_TOKEN:
+        BOT_TOKEN = "dummy_token_for_web_mode"
+    if OWNER_ID == 0:
+        OWNER_ID = 12345  # dummy ID
 
 # Initialize bot
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -6442,10 +6452,19 @@ def main():
     # Initialize database
     init_database()
     
-    # Start bot in a separate thread
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.daemon = True
-    bot_thread.start()
+    # Only start bot if we have valid credentials
+    original_bot_token = os.getenv('BOT_TOKEN')
+    original_owner_id = int(os.getenv('OWNER_ID', '0'))
+    
+    if original_bot_token and original_owner_id != 0:
+        logger.info("Valid credentials found - starting bot polling...")
+        # Start bot in a separate thread
+        bot_thread = threading.Thread(target=run_bot)
+        bot_thread.daemon = True
+        bot_thread.start()
+    else:
+        logger.info("Missing bot credentials - running in web-only mode")
+        logger.info("Add BOT_TOKEN and OWNER_ID to Replit Secrets to enable Telegram bot functionality")
     
     # Start Flask server
     port = int(os.environ.get('PORT', 5000))
