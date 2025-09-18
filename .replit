@@ -1,4 +1,4 @@
-modules = ["python-3.11", "postgresql-16"]
+modules = ["python-3.11"]
 [agent]
 expertMode = true
 
@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Content Bot Server"
+args = "Telegram Bot Web Server"
 
 [[workflows.workflow]]
-name = "Content Bot Server"
+name = "Telegram Bot Web Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -35,5 +35,5 @@ localPort = 5000
 externalPort = 80
 
 [deployment]
-deploymentTarget = "vm"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
