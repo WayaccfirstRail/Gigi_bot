@@ -1623,8 +1623,7 @@ Get ready to dive into me exclusive, unfiltered, and all yours. 🔥
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("🌟 VIP Portal", callback_data="vip_access"))
     markup.add(types.InlineKeyboardButton("🎬 Free VIP Teasers", callback_data="teasers"))
-    markup.add(types.InlineKeyboardButton("📂 My Collection", callback_data="my_content"))
-    markup.add(types.InlineKeyboardButton("💎 VIP Collection", callback_data="vip_content_catalog"))
+    markup.add(types.InlineKeyboardButton("🛒 Content Showcase", callback_data="browse_content"))
     markup.add(types.InlineKeyboardButton("ℹ️ Help", callback_data="help"))
     
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
