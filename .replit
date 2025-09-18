@@ -1,4 +1,4 @@
-modules = ["python-3.11", "postgresql-16"]
+modules = ["python-3.11"]
 [agent]
 expertMode = true
 
@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Telegram Bot Web Server"
+args = "Content Bot Server"
 
 [[workflows.workflow]]
-name = "Telegram Bot Web Server"
+name = "Content Bot Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -35,7 +35,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 45751
+localPort = 37393
 externalPort = 3000
 
 [deployment]
