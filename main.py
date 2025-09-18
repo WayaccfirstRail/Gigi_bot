@@ -4866,10 +4866,6 @@ Send your message in your next message. It will be delivered to all {target_name
     bot.send_message(chat_id, composer_text, reply_markup=markup, parse_mode='HTML')
     
     # Store the notification session
-    global notification_sessions
-    if 'notification_sessions' not in globals():
-        notification_sessions = {}
-    
     notification_sessions[chat_id] = {
         'target_group': target_group,
         'users': users,
@@ -4881,6 +4877,9 @@ Send your message in your next message. It will be delivered to all {target_name
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback_query(call):
     """Handle inline keyboard callbacks"""
+    
+    # Register user interaction for all callback queries
+    add_or_update_user(call.from_user)
     
     if call.data == "vip_access":
         show_vip_access(call.message.chat.id, call.from_user.id)
