@@ -325,7 +325,9 @@ def get_vip_subscribers():
         FROM users u
         JOIN vip_subscriptions v ON u.user_id = v.user_id
         WHERE v.is_active = 1 AND datetime(v.expiry_date) > datetime('now')
-    ''')
+            AND u.user_id != ?
+            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
+    ''', (OWNER_ID,))
     
     vip_users = cursor.fetchall()
     conn.close()
@@ -341,10 +343,12 @@ def get_non_vip_users():
         SELECT u.user_id, u.first_name, u.username
         FROM users u
         LEFT JOIN vip_subscriptions v ON u.user_id = v.user_id
-        WHERE v.user_id IS NULL 
+        WHERE (v.user_id IS NULL 
            OR v.is_active = 0 
-           OR datetime(v.expiry_date) <= datetime('now')
-    ''')
+           OR datetime(v.expiry_date) <= datetime('now'))
+            AND u.user_id != ?
+            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
+    ''', (OWNER_ID,))
     
     non_vip_users = cursor.fetchall()
     conn.close()
@@ -354,7 +358,13 @@ def get_all_users():
     """Get all users for general notifications"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT user_id, first_name, username FROM users ORDER BY last_interaction DESC')
+    cursor.execute('''
+        SELECT user_id, first_name, username 
+        FROM users 
+        WHERE user_id != ? 
+            AND (username IS NULL OR LOWER(username) NOT LIKE '%bot')
+        ORDER BY last_interaction DESC
+    ''', (OWNER_ID,))
     all_users = cursor.fetchall()
     conn.close()
     return all_users
