@@ -235,6 +235,18 @@ def get_user_data(user_id):
 
 def add_or_update_user(user):
     """Add new user or update existing user data"""
+    # Prevent owner from being registered as a regular user
+    if user.id == OWNER_ID:
+        return  # Don't register the owner
+    
+    # Prevent bots from being registered as users
+    if getattr(user, 'is_bot', False):
+        return  # Don't register bot accounts
+    
+    # Prevent accounts with bot-like usernames from being registered
+    if user.username and user.username.lower().endswith('bot'):
+        return  # Don't register likely bot accounts
+    
     # Prevent bot from registering itself as a user
     try:
         bot_info = bot.get_me()
