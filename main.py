@@ -6085,6 +6085,53 @@ Thank you for your purchase! Here's your exclusive content:
             except Exception as e:
                 logger.error(f"Error notifying owner: {e}")
 
+# Notification message handler (must be before general text handler for priority)
+
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.chat.id in notification_sessions and notification_sessions[message.chat.id].get('waiting_for_message'))
+def handle_notification_message_input(message):
+    """Handle notification message input from owner"""
+    session = notification_sessions[message.chat.id]
+    target_group = session['target_group']
+    users = session['users']
+    notification_text = message.text
+    
+    if len(notification_text) < 1 or len(notification_text) > 4000:
+        bot.send_message(message.chat.id, "❌ Message must be between 1 and 4000 characters. Please try again:")
+        return
+    
+    # Confirm before sending
+    target_names = {
+        'all': 'All Users',
+        'vip': 'VIP Members', 
+        'non_vip': 'Non-VIP Users'
+    }
+    
+    target_name = target_names.get(target_group, 'Unknown')
+    user_count = len(users)
+    
+    # Show preview and confirmation
+    preview_text = f"""
+📢 <b>NOTIFICATION PREVIEW</b> 📢
+
+🎯 <b>Target:</b> {target_name} ({user_count} users)
+
+📝 <b>Message Preview:</b>
+{notification_text}
+
+⚠️ <b>Ready to send?</b> This will notify {user_count} users immediately!
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("✅ Send Notification", callback_data=f"confirm_send_{target_group}"))
+    markup.add(types.InlineKeyboardButton("✏️ Edit Message", callback_data=f"notify_{target_group}_users"))
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="notification_management_menu"))
+    
+    bot.send_message(message.chat.id, preview_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Store the message for confirmation
+    notification_sessions[message.chat.id]['message_text'] = notification_text
+    notification_sessions[message.chat.id]['waiting_for_message'] = False
+
 # Natural text message handler
 
 @bot.message_handler(content_types=['text'])
@@ -6431,51 +6478,6 @@ def handle_loyal_fan_reason_input(message):
         # Clear the session
         if OWNERS[0] in upload_sessions:
             del upload_sessions[OWNERS[0]]
-
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.chat.id in notification_sessions and notification_sessions[message.chat.id].get('waiting_for_message'))
-def handle_notification_message_input(message):
-    """Handle notification message input from owner"""
-    session = notification_sessions[message.chat.id]
-    target_group = session['target_group']
-    users = session['users']
-    notification_text = message.text
-    
-    if len(notification_text) < 1 or len(notification_text) > 4000:
-        bot.send_message(message.chat.id, "❌ Message must be between 1 and 4000 characters. Please try again:")
-        return
-    
-    # Confirm before sending
-    target_names = {
-        'all': 'All Users',
-        'vip': 'VIP Members', 
-        'non_vip': 'Non-VIP Users'
-    }
-    
-    target_name = target_names.get(target_group, 'Unknown')
-    user_count = len(users)
-    
-    # Show preview and confirmation
-    preview_text = f"""
-📢 <b>NOTIFICATION PREVIEW</b> 📢
-
-🎯 <b>Target:</b> {target_name} ({user_count} users)
-
-📝 <b>Message Preview:</b>
-{notification_text}
-
-⚠️ <b>Ready to send?</b> This will notify {user_count} users immediately!
-"""
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("✅ Send Notification", callback_data=f"confirm_send_{target_group}"))
-    markup.add(types.InlineKeyboardButton("✏️ Edit Message", callback_data=f"notify_{target_group}_users"))
-    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="notification_management_menu"))
-    
-    bot.send_message(message.chat.id, preview_text, reply_markup=markup, parse_mode='HTML')
-    
-    # Store the message for confirmation
-    notification_sessions[message.chat.id]['message_text'] = notification_text
-    notification_sessions[message.chat.id]['waiting_for_message'] = False
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
