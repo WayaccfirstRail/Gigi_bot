@@ -951,7 +951,8 @@ Add a description that VIP members will see:
 
 def handle_vip_description_input(message):
     """Handle VIP content description input"""
-    session = upload_sessions[OWNER_ID]
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -967,17 +968,18 @@ def handle_vip_description_input(message):
 
 def handle_vip_settings_input(message):
     """Handle VIP settings input from interactive buttons"""
+    owner_id = message.from_user.id
     # Security check: Only owner can modify VIP settings
-    if not is_owner(message.from_user.id):
+    if not is_owner(owner_id):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only feature.")
         return
     
     # Robustness check: Ensure session exists and is valid
-    if OWNER_ID not in upload_sessions:
+    if not has_upload_session(owner_id):
         bot.send_message(message.chat.id, "❌ No active VIP settings session. Please start from VIP Settings.")
         return
     
-    session = upload_sessions[OWNER_ID]
+    session = get_upload_session(owner_id)
     
     # Validate session type
     if session.get('type') != 'vip_settings':
@@ -1013,7 +1015,7 @@ def handle_vip_settings_input(message):
                     db.session.commit()
                 
                 # Clear session
-                del upload_sessions[OWNER_ID]
+                clear_upload_session(owner_id)
                 
                 success_text = f"""
 ✅ <b>VIP PRICE UPDATED SUCCESSFULLY!</b> ✅
@@ -1055,7 +1057,7 @@ def handle_vip_settings_input(message):
                     db.session.commit()
                 
                 # Clear session
-                del upload_sessions[OWNER_ID]
+                clear_upload_session(owner_id)
                 
                 # Calculate friendly duration display
                 duration_text = f"{duration} days"
@@ -1105,7 +1107,7 @@ def handle_vip_settings_input(message):
                 db.session.commit()
             
             # Clear session
-            del upload_sessions[OWNER_ID]
+            clear_upload_session(owner_id)
             
             # Escape HTML special characters to prevent malformed HTML rendering
             safe_description = user_input.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -1128,8 +1130,8 @@ def handle_vip_settings_input(message):
     except Exception as e:
         logger.error(f"Error handling VIP settings input: {e}")
         # Clear session on error
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if has_upload_session(owner_id):
+            clear_upload_session(owner_id)
         bot.send_message(message.chat.id, "❌ An error occurred while updating the setting. Please try again from VIP Settings.")
 
 def complete_vip_upload_with_defaults(session):
@@ -2386,15 +2388,17 @@ def handle_file_upload(message):
             return
         
         # Check if this is a VIP upload session
-        session = upload_sessions[OWNER_ID]
+        owner_id = message.from_user.id
+        session = get_upload_session(owner_id)
         if session.get('type') == 'vip_content':
             handle_vip_file_upload(message, file_id, file_type)
             return
         
         # Regular content upload
-        upload_sessions[OWNER_ID]['file_path'] = file_id  # Store file_id instead of URL
-        upload_sessions[OWNER_ID]['file_type'] = file_type
-        upload_sessions[OWNER_ID]['step'] = 'waiting_for_name'
+        session = get_upload_session(owner_id)
+        session['file_path'] = file_id  # Store file_id instead of URL
+        session['file_type'] = file_type
+        session['step'] = 'waiting_for_name'
         
         # Ask for content name
         name_text = f"""
@@ -2561,8 +2565,9 @@ def save_uploaded_content(session):
                 bot.send_message(OWNER_ID, error_message)
                 
                 # Clear upload session since we can't proceed
-                if OWNER_ID in upload_sessions:
-                    del upload_sessions[OWNER_ID]
+                owner_id = session.get('owner_id', OWNER_ID)  # fallback for compatibility
+                if has_upload_session(owner_id):
+                    clear_upload_session(owner_id)
                 return
         
         # Save to database (with processed file_path) - Enhanced error handling
@@ -2639,16 +2644,18 @@ Your content is now available for purchase! Fans can buy it using:
             markup.add(types.InlineKeyboardButton("📦 Add Another", callback_data="start_upload"))
             markup.add(types.InlineKeyboardButton("👥 View Users", callback_data="owner_list_users"))
         
-        bot.send_message(OWNER_ID, success_text, reply_markup=markup, parse_mode='HTML')
+        owner_id = session.get('owner_id', OWNER_ID)  # fallback for compatibility
+        bot.send_message(owner_id, success_text, reply_markup=markup, parse_mode='HTML')
         
         # Clear upload session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if has_upload_session(owner_id):
+            clear_upload_session(owner_id)
             
     except Exception as e:
-        bot.send_message(OWNER_ID, f"❌ Error saving content: {str(e)}")
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        owner_id = session.get('owner_id', OWNER_ID)  # fallback for compatibility
+        bot.send_message(owner_id, f"❌ Error saving content: {str(e)}")
+        if has_upload_session(owner_id):
+            clear_upload_session(owner_id)
 
 @bot.message_handler(commands=['owner_upload_vip_teaser'])
 def owner_upload_vip_teaser(message):
@@ -2667,11 +2674,12 @@ def owner_upload_teaser(message):
         return
     
     # Start teaser upload session
-    upload_sessions[OWNER_ID] = {
+    owner_id = message.from_user.id
+    start_upload_session(owner_id, {
         'type': 'teaser',
         'step': 'waiting_for_file',
         'data': {}
-    }
+    })
     
     upload_text = """
 🎬 **TEASER UPLOAD** 🎬
@@ -2753,7 +2761,8 @@ def handle_vip_file_update_upload(message):
             return
     
     if file_id and file_type:
-        session = upload_sessions[OWNER_ID]
+        owner_id = message.from_user.id
+        session = get_upload_session(owner_id)
         content_name = session['content_name']
         
         # Update the VIP content file path directly
@@ -2767,7 +2776,7 @@ def handle_vip_file_update_upload(message):
                 updated_count = 0
         
         # Clear upload session
-        del upload_sessions[OWNER_ID]
+        clear_upload_session(owner_id)
         
         if updated_count > 0:
             success_text = f"""
@@ -2838,10 +2847,11 @@ What would you like to call this VIP teaser?
         else:
             bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
-@bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser_edit' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'vip_teaser_edit', 'waiting_for_file'))
 def handle_vip_teaser_edit_upload(message):
     """Handle VIP teaser edit file upload from owner"""
-    session = upload_sessions[OWNER_ID]
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
     
     # Store new file information
     file_id = None
@@ -2883,16 +2893,17 @@ def handle_vip_teaser_edit_upload(message):
             bot.send_message(message.chat.id, f"❌ Error updating VIP teaser: {str(e)}")
         
         # Clear upload session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if has_upload_session(owner_id):
+            clear_upload_session(owner_id)
     else:
         bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'teaser', 'waiting_for_file'))
 def handle_teaser_upload(message):
     """Handle teaser file upload from owner"""
-    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
-    session = upload_sessions[OWNER_ID]
+    owner_id = message.from_user.id
+    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {get_upload_session(owner_id)}")
+    session = get_upload_session(owner_id)
     
     if session['step'] == 'waiting_for_file':
         # Store file information
@@ -3063,10 +3074,11 @@ def handle_vip_teaser_description(message):
     if teaser_key in upload_sessions:
         del upload_sessions[teaser_key]
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'teaser', 'waiting_for_description'))
 def handle_teaser_description(message):
     """Handle teaser description from owner"""
-    session = upload_sessions[OWNER_ID]
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -3099,14 +3111,14 @@ def handle_teaser_description(message):
         markup.add(types.InlineKeyboardButton("🎬 Upload Another Free Teaser", callback_data="start_teaser_upload"))
         markup.add(types.InlineKeyboardButton("👥 View Customers", callback_data="owner_list_users"))
         
-        bot.send_message(OWNER_ID, success_text, reply_markup=markup, parse_mode='HTML')
+        bot.send_message(owner_id, success_text, reply_markup=markup, parse_mode='HTML')
         
     except Exception as e:
-        bot.send_message(OWNER_ID, f"❌ Error saving teaser: {str(e)}")
+        bot.send_message(owner_id, f"❌ Error saving teaser: {str(e)}")
     
     # Clear upload session
-    if OWNER_ID in upload_sessions:
-        del upload_sessions[OWNER_ID]
+    if has_upload_session(owner_id):
+        clear_upload_session(owner_id)
 
 @bot.message_handler(commands=['owner_list_teasers'])
 def owner_list_teasers(message):
