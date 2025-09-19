@@ -3,10 +3,12 @@ import threading
 import datetime
 import telebot
 from telebot import types
-from flask import render_template_string
+from flask import render_template_string, has_app_context
 from app import app, db
 from models import *
+from sqlalchemy import and_, func, or_
 import logging
+from functools import wraps
 import socket
 import ipaddress
 import requests
@@ -17,6 +19,17 @@ import mimetypes
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# App context decorator for TeleBot handlers
+def with_app_context(fn):
+    """Decorator to ensure Flask app context for TeleBot handlers"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if has_app_context():
+            return fn(*args, **kwargs)
+        with app.app_context():
+            return fn(*args, **kwargs)
+    return wrapper
 
 # Bot token and owner IDs from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -1502,6 +1515,7 @@ def download_and_upload_image(url, chat_id=None):
 # Bot command handlers
 
 @bot.message_handler(commands=['start'])
+@with_app_context
 def start_command(message):
     """Handle /start command"""
     add_or_update_user(message.from_user)
@@ -1741,12 +1755,14 @@ def buy_command(message):
 
 def purchase_item(chat_id, user_id, item_name):
     """Process purchase for specific item - ONLY allows purchases of 'browse' content"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    # Only allow purchases of 'browse' content - VIP content is subscription-only
-    cursor.execute('SELECT name, price_stars, file_path, description, created_date, content_type FROM content_items WHERE name = ? AND content_type = ?', (item_name, 'browse'))
-    item = cursor.fetchone()
-    conn.close()
+    with app.app_context():
+        # Only allow purchases of 'browse' content - VIP content is subscription-only
+        item_obj = ContentItem.query.filter_by(name=item_name, content_type='browse').first()
+        
+        if item_obj:
+            item = (item_obj.name, item_obj.price_stars, item_obj.file_path, item_obj.description, item_obj.created_date, item_obj.content_type)
+        else:
+            item = None
     
     if item:
         name, price_stars, file_path, description, created_date, content_type = item
@@ -1776,11 +1792,9 @@ def purchase_item(chat_id, user_id, item_name):
         )
     else:
         # Check if it's VIP content that user is trying to purchase
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT name, content_type FROM content_items WHERE name = ?', (item_name,))
-        vip_check = cursor.fetchone()
-        conn.close()
+        with app.app_context():
+            vip_item = ContentItem.query.filter_by(name=item_name).first()
+            vip_check = (vip_item.name, vip_item.content_type) if vip_item else None
         
         if vip_check and vip_check[1] == 'vip':
             bot.send_message(chat_id, f"❌ '{item_name}' is VIP-exclusive content and cannot be purchased individually.\n\n💎 Upgrade to VIP subscription for unlimited access to all VIP content!")
@@ -2159,17 +2173,14 @@ def owner_delete_content(message):
     
     name = parts[1]
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM content_items WHERE name = ?', (name,))
-    deleted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    
-    if deleted_count > 0:
-        bot.send_message(message.chat.id, f"✅ Content '{name}' deleted successfully!")
-    else:
-        bot.send_message(message.chat.id, f"❌ Content '{name}' not found.")
+    with app.app_context():
+        content_item = ContentItem.query.filter_by(name=name).first()
+        if content_item:
+            db.session.delete(content_item)
+            db.session.commit()
+            bot.send_message(message.chat.id, f"✅ Content '{name}' deleted successfully!")
+        else:
+            bot.send_message(message.chat.id, f"❌ Content '{name}' not found.")
 
 @bot.message_handler(commands=['owner_upload'])
 def owner_upload_content(message):
@@ -4762,6 +4773,7 @@ Send your message in your next message. It will be delivered to all {target_name
 # Callback query handlers
 
 @bot.callback_query_handler(func=lambda call: True)
+@with_app_context
 def handle_callback_query(call):
     """Handle inline keyboard callbacks"""
     
@@ -6301,11 +6313,12 @@ def run_bot():
                 except:
                     pass
             
-            bot.infinity_polling(
-                none_stop=True,
-                timeout=30,  # 30 second timeout for requests
-                skip_pending=True  # Skip pending messages on restart
-            )
+            with app.app_context():
+                bot.infinity_polling(
+                    none_stop=True,
+                    timeout=30,  # 30 second timeout for requests
+                    skip_pending=True  # Skip pending messages on restart
+                )
             logger.info("Bot polling started successfully!")
             break  # If we reach here, polling started successfully
             
