@@ -1159,25 +1159,25 @@ def get_vip_settings_original(key):
 
 def update_vip_settings(key, value):
     """Update VIP setting"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO vip_settings (key, value) VALUES (?, ?)', (key, value))
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        setting = VipSetting.query.filter_by(key=key).first()
+        if setting:
+            setting.value = value
+        else:
+            setting = VipSetting(key=key, value=value)
+            db.session.add(setting)
+        db.session.commit()
 
 def activate_vip_subscription(user_id):
     """Activate or renew VIP subscription for user"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Get VIP duration from settings
-    duration_days = int(get_vip_settings('vip_duration_days') or 30)
-    
-    now = datetime.datetime.now()
-    
-    # Check if user already has an active subscription
-    cursor.execute('SELECT expiry_date FROM vip_subscriptions WHERE user_id = ? AND is_active = 1', (user_id,))
-    existing = cursor.fetchone()
+    with app.app_context():
+        # Get VIP duration from settings
+        duration_days = int(get_vip_settings('vip_duration_days') or 30)
+        
+        now = datetime.datetime.now()
+        
+        # Check if user already has an active subscription
+        existing_subscription = VipSubscription.query.filter_by(user_id=user_id, is_active=True).first()
     
     if existing:
         # Extend existing subscription
@@ -1878,12 +1878,10 @@ def show_content_catalog(chat_id, user_id=None):
         # In practice, we should always pass user_id
         user_id = chat_id  # Assuming direct message context
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    # Only show content marked as 'browse' type - not VIP-only content
-    cursor.execute('SELECT name, price_stars, description FROM content_items WHERE content_type = ?', ('browse',))
-    items = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        # Only show content marked as 'browse' type - not VIP-only content
+        items_query = ContentItem.query.filter_by(content_type='browse').all()
+        items = [(item.name, item.price_stars, item.description) for item in items_query]
     
     if items:
         catalog_text = "<b>BROWSING CONTENT</b> 🛒\n\n"
