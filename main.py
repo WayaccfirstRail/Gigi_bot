@@ -714,14 +714,16 @@ def delete_teaser(teaser_id):
 
 def add_teaser(file_path, file_type, description, vip_only=False):
     """Add a teaser to the database"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO teasers (file_path, file_type, description, created_date, vip_only)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (file_path, file_type, description, datetime.datetime.now().isoformat(), 1 if vip_only else 0))
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        new_teaser = Teaser(
+            file_path=file_path,
+            file_type=file_type,
+            description=description,
+            created_date=datetime.datetime.now(),
+            vip_only=vip_only
+        )
+        db.session.add(new_teaser)
+        db.session.commit()
 
 def start_vip_upload_session(chat_id, user_id):
     """Start guided VIP content upload session"""
@@ -1962,18 +1964,16 @@ This exclusive content is only available to VIP members. Upgrade now to unlock:
     with app.app_context():
         # Only show content marked as 'vip' type
         vip_content = ContentItem.query.filter_by(content_type='vip').all()
-    vip_items = cursor.fetchall()
-    conn.close()
     
-    if vip_items:
+    if vip_content:
         catalog_text = f"💎 <b>VIP EXCLUSIVE CONTENT </b> 💎\n\n"
         catalog_text += f"🎉 Welcome VIP member! Free access to all VIP content!\n"
         catalog_text += f"⏰ Your VIP expires in {vip_status['days_left']} days\n\n"
-        catalog_text += f"📚 <b>{len(vip_items)} exclusive VIP items available:</b>\n\n"
+        catalog_text += f"📚 <b>{len(vip_content)} exclusive VIP items available:</b>\n\n"
         
         markup = types.InlineKeyboardMarkup()
         
-        for name, price, description in vip_items:
+        for content_item in vip_content:
             # Escape HTML special characters to prevent parsing errors
             safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             safe_description = description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
