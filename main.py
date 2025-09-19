@@ -245,17 +245,18 @@ def get_user_purchased_content(user_id):
 
 def get_vip_subscribers():
     """Get all active VIP subscribers for notifications"""
-    from sqlalchemy import and_, func
-    
-    # Get active VIP subscribers
-    vip_users = db.session.query(User.user_id, User.first_name, User.username).join(
+    with app.app_context():
+        from sqlalchemy import and_, func
+        
+        # Get active VIP subscribers
+        vip_users = db.session.query(User.user_id, User.first_name, User.username).join(
         VipSubscription, User.user_id == VipSubscription.user_id
     ).filter(
         and_(
             VipSubscription.is_active == True,
             VipSubscription.expiry_date > func.now(),
             User.user_id != OWNER_ID,
-            db.or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+            or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
         )
     ).all()
     
@@ -263,10 +264,11 @@ def get_vip_subscribers():
 
 def get_non_vip_users():
     """Get all non-VIP users (users without active VIP subscriptions) for notifications"""
-    from sqlalchemy import and_, func, or_
-    
-    # Get users who are not VIP subscribers (no active subscription or expired)
-    non_vip_users = db.session.query(User.user_id, User.first_name, User.username).outerjoin(
+    with app.app_context():
+        from sqlalchemy import and_, func, or_
+        
+        # Get users who are not VIP subscribers (no active subscription or expired)
+        non_vip_users = db.session.query(User.user_id, User.first_name, User.username).outerjoin(
         VipSubscription, User.user_id == VipSubscription.user_id
     ).filter(
         and_(
@@ -284,16 +286,17 @@ def get_non_vip_users():
 
 def get_all_users():
     """Get all users for general notifications"""
-    from sqlalchemy import and_, func, or_
-    
-    all_users = db.session.query(User.user_id, User.first_name, User.username).filter(
-        and_(
-            User.user_id != OWNER_ID,
-            or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
-        )
-    ).order_by(User.last_interaction.desc()).all()
-    
-    return all_users
+    with app.app_context():
+        from sqlalchemy import and_, func, or_
+        
+        all_users = db.session.query(User.user_id, User.first_name, User.username).filter(
+            and_(
+                User.user_id != OWNER_ID,
+                or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+            )
+        ).order_by(User.last_interaction.desc()).all()
+        
+        return all_users
 
 def send_notification_to_users(user_list, message_text, markup=None, pin_message=False):
     """
