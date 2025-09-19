@@ -6545,7 +6545,30 @@ def main():
     # Start Flask server
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"Starting Flask server on 0.0.0.0:{port}...")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    
+    # Handle port conflicts gracefully
+    try:
+        app.run(host='0.0.0.0', port=port, debug=False)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            logger.error(f"Port {port} is already in use. Trying alternative ports...")
+            # Try alternative ports
+            for alt_port in [5001, 5002, 5003, 8000, 8080]:
+                try:
+                    logger.info(f"Trying port {alt_port}...")
+                    app.run(host='0.0.0.0', port=alt_port, debug=False)
+                    break
+                except OSError as alt_e:
+                    if "Address already in use" in str(alt_e):
+                        logger.warning(f"Port {alt_port} also in use, trying next...")
+                        continue
+                    else:
+                        raise alt_e
+            else:
+                logger.error("Could not find an available port to run Flask server")
+                raise e
+        else:
+            raise e
 
 if __name__ == '__main__':
     main()
