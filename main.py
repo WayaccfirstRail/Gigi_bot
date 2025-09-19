@@ -2655,7 +2655,7 @@ def handle_vip_upload_files(message):
         # Handle uncompressed photos sent as documents
         if message.document.mime_type and message.document.mime_type.startswith('image/'):
             file_id = message.document.file_id
-            file_type = "Photo"
+            file_type = "Document"  # Keep as Document type for accurate delivery
         else:
             bot.send_message(message.chat.id, "❌ Document type not supported for VIP content. Please send image files, videos, or GIFs only.")
             return
@@ -2665,7 +2665,7 @@ def handle_vip_upload_files(message):
     else:
         bot.send_message(message.chat.id, "❌ Unsupported file type for VIP content. Please send photos, videos, or GIFs only.")
 
-@bot.message_handler(content_types=['photo', 'video', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_file_update' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'animation', 'document'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_file_update' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_vip_file_update_upload(message):
     """Handle VIP file update uploads - replace existing file"""
     logger.info(f"VIP file update handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
@@ -2683,6 +2683,14 @@ def handle_vip_file_update_upload(message):
     elif message.content_type == 'animation':
         file_id = message.animation.file_id
         file_type = "GIF"
+    elif message.content_type == 'document':
+        # Handle uncompressed photos sent as documents
+        if message.document.mime_type and message.document.mime_type.startswith('image/'):
+            file_id = message.document.file_id
+            file_type = "Document"
+        else:
+            bot.send_message(message.chat.id, "❌ Document type not supported for VIP content. Please send image files, videos, or GIFs only.")
+            return
     
     if file_id and file_type:
         session = upload_sessions[OWNERS[0]]
