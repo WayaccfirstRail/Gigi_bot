@@ -828,7 +828,7 @@ Send me the file you want to add as VIP content:
 def handle_vip_file_upload(message, file_id, file_type):
     """Handle VIP content file upload"""
     logger.info(f"VIP content handler called - Content type: {message.content_type}, File type: {file_type}")
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     
     # Store file information
     session['file_path'] = file_id
@@ -881,7 +881,7 @@ Choose a unique name for this VIP content:
 
 def handle_vip_name_input(message):
     """Handle VIP content name input"""
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     name = message.text.strip()
     
     # Validate name - allow spaces, letters, numbers but no underscores
@@ -923,7 +923,7 @@ Add a description that VIP members will see:
 
 def handle_vip_description_input(message):
     """Handle VIP content description input"""
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -945,11 +945,11 @@ def handle_vip_settings_input(message):
         return
     
     # Robustness check: Ensure session exists and is valid
-    if OWNERS[0] not in upload_sessions:
+    if OWNER_ID not in upload_sessions:
         bot.send_message(message.chat.id, "❌ No active VIP settings session. Please start from VIP Settings.")
         return
     
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     
     # Validate session type
     if session.get('type') != 'vip_settings':
@@ -985,7 +985,7 @@ def handle_vip_settings_input(message):
                     db.session.commit()
                 
                 # Clear session
-                del upload_sessions[OWNERS[0]]
+                del upload_sessions[OWNER_ID]
                 
                 success_text = f"""
 ✅ <b>VIP PRICE UPDATED SUCCESSFULLY!</b> ✅
@@ -1027,7 +1027,7 @@ def handle_vip_settings_input(message):
                     db.session.commit()
                 
                 # Clear session
-                del upload_sessions[OWNERS[0]]
+                del upload_sessions[OWNER_ID]
                 
                 # Calculate friendly duration display
                 duration_text = f"{duration} days"
@@ -1077,7 +1077,7 @@ def handle_vip_settings_input(message):
                 db.session.commit()
             
             # Clear session
-            del upload_sessions[OWNERS[0]]
+            del upload_sessions[OWNER_ID]
             
             # Escape HTML special characters to prevent malformed HTML rendering
             safe_description = user_input.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -1100,8 +1100,8 @@ def handle_vip_settings_input(message):
     except Exception as e:
         logger.error(f"Error handling VIP settings input: {e}")
         # Clear session on error
-        if OWNERS[0] in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
         bot.send_message(message.chat.id, "❌ An error occurred while updating the setting. Please try again from VIP Settings.")
 
 def complete_vip_upload_with_defaults(session):
@@ -2265,7 +2265,7 @@ def owner_upload_content(message):
         return
     
     # Initialize upload session
-    upload_sessions[OWNERS[0]] = {
+    upload_sessions[OWNER_ID] = {
         'step': 'waiting_for_file',
         'name': None,
         'price': None,
@@ -2356,7 +2356,7 @@ def handle_file_upload(message):
             return
         
         # Check if this is a VIP upload session
-        session = upload_sessions[OWNERS[0]]
+        session = upload_sessions[OWNER_ID]
         if session.get('type') == 'vip_content':
             handle_vip_file_upload(message, file_id, file_type)
             return
@@ -2386,10 +2386,10 @@ This name will be used internally to identify the content.
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions)
 def handle_upload_flow(message):
     """Handle the guided upload flow steps"""
-    if OWNERS[0] not in upload_sessions:
+    if OWNER_ID not in upload_sessions:
         return
     
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     
     # Handle VIP upload flow
     if session.get('type') == 'vip_content':
@@ -2531,8 +2531,8 @@ def save_uploaded_content(session):
                 bot.send_message(OWNER_ID, error_message)
                 
                 # Clear upload session since we can't proceed
-                if OWNERS[0] in upload_sessions:
-                    del upload_sessions[OWNERS[0]]
+                if OWNER_ID in upload_sessions:
+                    del upload_sessions[OWNER_ID]
                 return
         
         # Save to database (with processed file_path) - Enhanced error handling
@@ -2612,13 +2612,13 @@ Your content is now available for purchase! Fans can buy it using:
         bot.send_message(OWNER_ID, success_text, reply_markup=markup, parse_mode='HTML')
         
         # Clear upload session
-        if OWNERS[0] in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
             
     except Exception as e:
         bot.send_message(OWNER_ID, f"❌ Error saving content: {str(e)}")
-        if OWNERS[0] in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
 
 @bot.message_handler(commands=['owner_upload_vip_teaser'])
 def owner_upload_vip_teaser(message):
@@ -2723,7 +2723,7 @@ def handle_vip_file_update_upload(message):
             return
     
     if file_id and file_type:
-        session = upload_sessions[OWNERS[0]]
+        session = upload_sessions[OWNER_ID]
         content_name = session['content_name']
         
         # Update the VIP content file path directly
@@ -2811,7 +2811,7 @@ What would you like to call this VIP teaser?
 @bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_teaser_edit' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_vip_teaser_edit_upload(message):
     """Handle VIP teaser edit file upload from owner"""
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     
     # Store new file information
     file_id = None
@@ -2853,16 +2853,16 @@ def handle_vip_teaser_edit_upload(message):
             bot.send_message(message.chat.id, f"❌ Error updating VIP teaser: {str(e)}")
         
         # Clear upload session
-        if OWNERS[0] in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
     else:
         bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNERS[0] in upload_sessions and upload_sessions[OWNERS[0]].get('type') == 'teaser' and upload_sessions[OWNERS[0]].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_teaser_upload(message):
     """Handle teaser file upload from owner"""
-    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNERS[0], 'None')}")
-    session = upload_sessions[OWNERS[0]]
+    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
+    session = upload_sessions[OWNER_ID]
     
     if session['step'] == 'waiting_for_file':
         # Store file information
@@ -3033,10 +3033,10 @@ def handle_vip_teaser_description(message):
     if teaser_key in upload_sessions:
         del upload_sessions[teaser_key]
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNERS[0] in upload_sessions and upload_sessions[OWNERS[0]].get('type') == 'teaser' and upload_sessions[OWNERS[0]].get('step') == 'waiting_for_description')
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
 def handle_teaser_description(message):
     """Handle teaser description from owner"""
-    session = upload_sessions[OWNERS[0]]
+    session = upload_sessions[OWNER_ID]
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -5077,13 +5077,13 @@ def handle_callback_query(call):
             owner_list_users(fake_message)
     elif call.data == "cancel_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+            del upload_sessions[OWNER_ID]
             bot.send_message(call.message.chat.id, "❌ Upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active upload session.")
     elif call.data == "skip_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            session = upload_sessions[OWNERS[0]]
+            session = upload_sessions[OWNER_ID]
             if session['step'] == 'waiting_for_description':
                 # Check session type to route to correct handler
                 if session.get('type') == 'teaser':
@@ -5110,12 +5110,12 @@ def handle_callback_query(call):
                         bot.send_message(call.message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
                         
                         # Clear upload session
-                        del upload_sessions[OWNERS[0]]
+                        del upload_sessions[OWNER_ID]
                         
                     except Exception as e:
                         bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
-                        if OWNERS[0] in upload_sessions:
-                            del upload_sessions[OWNERS[0]]
+                        if OWNER_ID in upload_sessions:
+                            del upload_sessions[OWNER_ID]
                 else:
                     # Regular content upload
                     session['description'] = f"Exclusive {session.get('file_type', 'content').lower()} content"
@@ -5148,13 +5148,13 @@ def handle_callback_query(call):
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_teaser_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            del upload_sessions[OWNERS[0]]
+            del upload_sessions[OWNER_ID]
             bot.send_message(call.message.chat.id, "❌ Teaser upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active teaser upload session.")
     elif call.data == "skip_teaser_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            session = upload_sessions[OWNERS[0]]
+            session = upload_sessions[OWNER_ID]
             if session['step'] == 'waiting_for_description':
                 session['description'] = "Exclusive teaser content"
                 # Save teaser to database
@@ -5179,12 +5179,12 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
                     bot.send_message(call.message.chat.id, success_text, reply_markup=markup)
                     
                     # Clear upload session
-                    del upload_sessions[OWNERS[0]]
+                    del upload_sessions[OWNER_ID]
                     
                 except Exception as e:
                     bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
-                    if OWNERS[0] in upload_sessions:
-                        del upload_sessions[OWNERS[0]]
+                    if OWNER_ID in upload_sessions:
+                        del upload_sessions[OWNER_ID]
             else:
                 bot.send_message(call.message.chat.id, "❌ Invalid step for skipping description.")
         else:
@@ -5224,13 +5224,13 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_vip_upload":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            del upload_sessions[OWNERS[0]]
+            del upload_sessions[OWNER_ID]
             bot.send_message(call.message.chat.id, "❌ VIP upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "use_suggested_name":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNERS[0]]
+            session = upload_sessions[OWNER_ID]
             if session['step'] == 'waiting_for_name' and 'suggested_name' in session:
                 # Check if suggested name is unique
                 suggested_name = session['suggested_name']
@@ -5272,7 +5272,7 @@ Add a description that VIP members will see:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "skip_vip_description":
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNERS[0]]
+            session = upload_sessions[OWNER_ID]
             if session['step'] == 'waiting_for_description':
                 session['description'] = f"Exclusive VIP {session.get('file_type', 'content').lower()}"
                 session['price'] = 0  # VIP content is free for VIP members
@@ -6450,8 +6450,8 @@ def handle_loyal_fan_reason_input(message):
                 bot.send_message(message.chat.id, "❌ User not found in database.")
         
         # Clear the session
-        if OWNERS[0] in upload_sessions:
-            del upload_sessions[OWNERS[0]]
+        if OWNER_ID in upload_sessions:
+            del upload_sessions[OWNER_ID]
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
