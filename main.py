@@ -249,7 +249,543 @@ def health():
         "timestamp": datetime.datetime.now().isoformat()
     })
 
-# Run bot functions (placeholder for now - will add bot handlers later if needed)
+# Helper functions for VIP and content access control
+def is_vip_active(user_id):
+    """Check if user has active VIP subscription"""
+    with app.app_context():
+        vip = VipSubscription.query.filter_by(user_id=user_id, is_active=True).first()
+        if not vip:
+            return False
+        # Check if subscription is expired
+        return vip.expiry_date > datetime.datetime.now()
+
+def check_user_owns_content(user_id, content_name):
+    """Check if user has purchased specific content"""
+    with app.app_context():
+        purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
+        return purchase is not None
+
+def get_vip_price():
+    """Get VIP subscription price from settings"""
+    with app.app_context():
+        setting = VipSetting.query.filter_by(key='vip_price_stars').first()
+        return int(setting.value) if setting else 399
+
+def get_vip_duration():
+    """Get VIP subscription duration from settings"""
+    with app.app_context():
+        setting = VipSetting.query.filter_by(key='vip_duration_days').first()
+        return int(setting.value) if setting else 30
+
+# Bot command handlers
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    """Handle /start command"""
+    user = message.from_user
+    add_or_update_user(user)
+    
+    welcome_text = f"""
+👋 Hey {user.first_name}! Welcome to my exclusive content bot!
+
+🌟 Here's what you can do:
+• 🎬 /teaser - View free preview content
+• 💎 /vip_access - Get VIP subscription for exclusive content
+• 🛒 /browse - Browse purchasable content
+• ❓ /help - See all available commands
+
+💕 I love connecting with my fans! Feel free to chat with me anytime.
+
+✨ Ready to explore? Start with /teaser to see what I'm all about!
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("🎬 View Teasers", callback_data="teasers"))
+    markup.add(types.InlineKeyboardButton("💎 VIP Access", callback_data="vip_access"))
+    markup.add(types.InlineKeyboardButton("🛒 Browse Content", callback_data="browse_content"))
+    
+    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+
+@bot.message_handler(commands=['vip_access'])
+def vip_access_command(message):
+    """Handle VIP subscription access"""
+    user_id = message.from_user.id
+    
+    # Check if user already has active VIP
+    if is_vip_active(user_id):
+        with app.app_context():
+            vip = VipSubscription.query.filter_by(user_id=user_id).first()
+            expiry_str = vip.expiry_date.strftime("%Y-%m-%d") if vip else "Unknown"
+        
+        vip_text = f"""
+💎 <b>VIP STATUS: ACTIVE</b> ✅
+
+🗓 <b>Expires:</b> {expiry_str}
+🎬 <b>Access:</b> All exclusive VIP content
+💬 <b>Priority:</b> Direct chat access
+
+🔥 <b>Enjoy your VIP benefits!</b>
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🎬 VIP Content", callback_data="vip_content"))
+        bot.send_message(message.chat.id, vip_text, reply_markup=markup, parse_mode='HTML')
+        return
+    
+    # Show VIP subscription options
+    vip_price = get_vip_price()
+    vip_duration = get_vip_duration()
+    
+    vip_text = f"""
+💎 <b>VIP MEMBERSHIP AVAILABLE</b>
+
+🌟 <b>Price:</b> {vip_price} Telegram Stars
+⏰ <b>Duration:</b> {vip_duration} days
+🎁 <b>Benefits:</b>
+  • Exclusive VIP-only content
+  • Priority direct chat access
+  • Special VIP teasers
+  • Unlimited content access
+
+💳 <b>Ready to upgrade?</b> Click below to purchase!
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(f"💎 Buy VIP ({vip_price} ⭐)", callback_data=f"buy_vip_{vip_price}"))
+    bot.send_message(message.chat.id, vip_text, reply_markup=markup, parse_mode='HTML')
+
+@bot.message_handler(commands=['browse'])
+def browse_content_command(message):
+    """Handle content browsing"""
+    with app.app_context():
+        content_items = ContentItem.query.filter_by(content_type='browse').all()
+        
+        if not content_items:
+            bot.send_message(message.chat.id, "📭 No content available right now. Check back soon!")
+            return
+        
+        browse_text = "🛒 <b>AVAILABLE CONTENT</b>\n\n"
+        markup = types.InlineKeyboardMarkup()
+        
+        for item in content_items:
+            user_owns = check_user_owns_content(message.from_user.id, item.name)
+            status = "✅ OWNED" if user_owns else f"{item.price_stars} ⭐"
+            
+            browse_text += f"🎬 <b>{item.name}</b>\n"
+            browse_text += f"💰 {status}\n"
+            browse_text += f"📝 {item.description or 'Exclusive content'}\n\n"
+            
+            if user_owns:
+                markup.add(types.InlineKeyboardButton(f"📥 Access: {item.name}", callback_data=f"access_{item.name}"))
+            else:
+                markup.add(types.InlineKeyboardButton(f"💳 Buy: {item.name} ({item.price_stars} ⭐)", callback_data=f"buy_content_{item.name}"))
+        
+        bot.send_message(message.chat.id, browse_text, reply_markup=markup, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_vip_'))
+def handle_vip_purchase(call):
+    """Handle VIP subscription purchase"""
+    price = int(call.data.split('_')[2])
+    user_id = call.from_user.id
+    
+    # Create invoice for VIP subscription
+    bot.send_invoice(
+        chat_id=call.message.chat.id,
+        title="💎 VIP Membership",
+        description=f"Premium VIP access for {get_vip_duration()} days with exclusive content and direct chat",
+        invoice_payload=f"vip_subscription_{user_id}",
+        provider_token="",  # Telegram Stars doesn't need provider token
+        currency="XTR",  # Telegram Stars currency
+        prices=[types.LabeledPrice(label="VIP Membership", amount=price)],
+        start_parameter="vip_subscription"
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_content_'))
+def handle_content_purchase(call):
+    """Handle content purchase"""
+    content_name = call.data.replace('buy_content_', '')
+    user_id = call.from_user.id
+    
+    with app.app_context():
+        content = ContentItem.query.filter_by(name=content_name).first()
+        if not content:
+            bot.answer_callback_query(call.id, "❌ Content not found")
+            return
+        
+        if check_user_owns_content(user_id, content_name):
+            bot.answer_callback_query(call.id, "✅ You already own this content")
+            return
+    
+    # Create invoice for content purchase
+    bot.send_invoice(
+        chat_id=call.message.chat.id,
+        title=f"🎬 {content.name}",
+        description=content.description or "Exclusive content",
+        invoice_payload=f"content_{content_name}_{user_id}",
+        provider_token="",
+        currency="XTR",
+        prices=[types.LabeledPrice(label=content.name, amount=content.price_stars)],
+        start_parameter="content_purchase"
+    )
+
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def pre_checkout_handler(pre_checkout_query):
+    """Handle pre-checkout validation with proper price checking"""
+    payload = pre_checkout_query.invoice_payload
+    total_amount = pre_checkout_query.total_amount
+    currency = pre_checkout_query.currency
+    
+    # Validate currency is Telegram Stars
+    if currency != 'XTR':
+        bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Invalid currency. Only Telegram Stars accepted.")
+        return
+    
+    # Validate payment amount against expected price
+    if payload.startswith('vip_subscription_'):
+        expected_price = get_vip_price()
+        if total_amount != expected_price:
+            bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message=f"Invalid amount. VIP costs {expected_price} Telegram Stars.")
+            return
+    elif payload.startswith('content_'):
+        parts = payload.split('_')
+        content_name = '_'.join(parts[1:-1])
+        with app.app_context():
+            content = ContentItem.query.filter_by(name=content_name).first()
+            if not content:
+                bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message="Content not found.")
+                return
+            if total_amount != content.price_stars:
+                bot.answer_pre_checkout_query(pre_checkout_query.id, ok=False, error_message=f"Invalid amount. This content costs {content.price_stars} Telegram Stars.")
+                return
+    
+    # Payment is valid
+    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@bot.message_handler(content_types=['successful_payment'])
+def successful_payment_handler(message):
+    """Handle successful payment"""
+    payment = message.successful_payment
+    payload = payment.invoice_payload
+    user_id = message.from_user.id
+    amount = payment.total_amount
+    
+    # Validate payment details
+    if payment.currency != 'XTR':
+        logger.error(f"Invalid currency in payment: {payment.currency}")
+        bot.send_message(message.chat.id, "❌ Payment error: Invalid currency")
+        return
+    
+    # Extract and validate user_id from payload
+    payload_user_id = None
+    if payload.startswith('vip_subscription_'):
+        payload_user_id = int(payload.split('_')[2])
+    elif payload.startswith('content_'):
+        payload_user_id = int(payload.split('_')[-1])
+    
+    if payload_user_id != user_id:
+        logger.error(f"User ID mismatch: payload={payload_user_id}, actual={user_id}")
+        bot.send_message(message.chat.id, "❌ Payment error: User verification failed")
+        return
+    
+    with app.app_context():
+        if payload.startswith('vip_subscription_'):
+            # Validate VIP payment amount
+            expected_vip_price = get_vip_price()
+            if amount != expected_vip_price:
+                logger.error(f"VIP payment amount mismatch: expected={expected_vip_price}, received={amount}")
+                bot.send_message(message.chat.id, f"❌ Payment error: Expected {expected_vip_price} stars, received {amount}")
+                return
+            
+            # Handle VIP subscription payment
+            expiry_date = datetime.datetime.now() + datetime.timedelta(days=get_vip_duration())
+            
+            # Check if user already has VIP subscription
+            existing_vip = VipSubscription.query.filter_by(user_id=user_id).first()
+            if existing_vip:
+                # Extend existing subscription
+                existing_vip.expiry_date = expiry_date
+                existing_vip.is_active = True
+                existing_vip.total_payments += amount
+            else:
+                # Create new VIP subscription
+                vip_sub = VipSubscription()
+                vip_sub.user_id = user_id
+                vip_sub.start_date = datetime.datetime.now()
+                vip_sub.expiry_date = expiry_date
+                vip_sub.is_active = True
+                vip_sub.total_payments = amount
+                db.session.add(vip_sub)
+            
+            # Update user's total stars spent
+            user = User.query.filter_by(user_id=user_id).first()
+            if user:
+                user.total_stars_spent += amount
+            
+            db.session.commit()
+            
+            success_text = f"""
+💎 <b>VIP MEMBERSHIP ACTIVATED!</b> ✅
+
+🎉 Welcome to VIP status!
+⏰ <b>Valid until:</b> {expiry_date.strftime("%Y-%m-%d")}
+💰 <b>Paid:</b> {amount} Telegram Stars
+
+🔥 <b>You now have access to:</b>
+• All exclusive VIP content
+• Priority direct chat
+• Special VIP teasers
+
+💕 Thank you for your support!
+"""
+            
+            markup = types.InlineKeyboardMarkup()
+            markup.add(types.InlineKeyboardButton("🎬 Access VIP Content", callback_data="vip_content"))
+            bot.send_message(message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
+            
+        elif payload.startswith('content_'):
+            # Handle content purchase payment
+            parts = payload.split('_')
+            content_name = '_'.join(parts[1:-1])  # Handle content names with underscores
+            
+            # Validate content exists and price matches
+            content = ContentItem.query.filter_by(name=content_name).first()
+            if not content:
+                logger.error(f"Content not found for purchase: {content_name}")
+                bot.send_message(message.chat.id, "❌ Payment error: Content not found")
+                return
+            
+            if amount != content.price_stars:
+                logger.error(f"Content payment amount mismatch: expected={content.price_stars}, received={amount}")
+                bot.send_message(message.chat.id, f"❌ Payment error: Expected {content.price_stars} stars, received {amount}")
+                return
+            
+            # Check if user already owns this content
+            if not check_user_owns_content(user_id, content_name):
+                # Add purchase record
+                purchase = UserPurchase()
+                purchase.user_id = user_id
+                purchase.content_name = content_name
+                purchase.purchase_date = datetime.datetime.now()
+                purchase.price_paid = amount
+                db.session.add(purchase)
+                
+                # Update user's total stars spent
+                user = User.query.filter_by(user_id=user_id).first()
+                if user:
+                    user.total_stars_spent += amount
+                
+                db.session.commit()
+            
+            # Deliver content
+            content = ContentItem.query.filter_by(name=content_name).first()
+            if content and content.file_path:
+                success_text = f"""
+✅ <b>PURCHASE SUCCESSFUL!</b>
+
+🎬 <b>Content:</b> {content_name}
+💰 <b>Paid:</b> {amount} Telegram Stars
+
+📥 <b>Your content is ready!</b>
+"""
+                bot.send_message(message.chat.id, success_text, parse_mode='HTML')
+                
+                # Send the actual content
+                try:
+                    if content.file_path.startswith('http'):
+                        # URL-based content
+                        bot.send_message(message.chat.id, f"🔗 Access your content: {content.file_path}")
+                    else:
+                        # Local file content
+                        with open(content.file_path, 'rb') as content_file:
+                            bot.send_document(message.chat.id, content_file)
+                except Exception as e:
+                    logger.error(f"Failed to deliver content {content_name}: {e}")
+                    bot.send_message(message.chat.id, "❌ Error delivering content. Please contact support.")
+            else:
+                bot.send_message(message.chat.id, f"✅ Purchase successful! Content: {content_name}")
+
+# Callback handlers for inline buttons
+@bot.callback_query_handler(func=lambda call: call.data == "vip_access")
+def callback_vip_access(call):
+    """Handle VIP access button"""
+    vip_access_command(call.message)
+
+@bot.callback_query_handler(func=lambda call: call.data == "browse_content")
+def callback_browse_content(call):
+    """Handle browse content button"""
+    browse_content_command(call.message)
+
+@bot.callback_query_handler(func=lambda call: call.data == "vip_content")
+def callback_vip_content(call):
+    """Handle VIP content access - REQUIRES ACTIVE VIP SUBSCRIPTION"""
+    user_id = call.from_user.id
+    
+    # CRITICAL: Check VIP access before allowing any content
+    if not is_vip_active(user_id):
+        bot.answer_callback_query(call.id, "❌ VIP subscription required!")
+        vip_access_command(call.message)  # Redirect to VIP purchase
+        return
+    
+    # VIP user confirmed - show VIP content
+    vip_content_text = """
+💎 <b>EXCLUSIVE VIP CONTENT</b> ✨
+
+🔥 <b>Welcome to your VIP area!</b>
+
+🎬 <b>Available VIP Content:</b>
+• Premium behind-the-scenes videos
+• Exclusive photo collections
+• Personal messages and updates
+• Live chat priority access
+
+📅 <b>New VIP content added regularly!</b>
+
+💕 Thank you for being a VIP supporter!
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("💎 VIP Status", callback_data="vip_status"))
+    markup.add(types.InlineKeyboardButton("🔙 Back to Menu", callback_data="main_menu"))
+    
+    bot.send_message(call.message.chat.id, vip_content_text, reply_markup=markup, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data == "vip_status")
+def callback_vip_status(call):
+    """Show VIP subscription status"""
+    user_id = call.from_user.id
+    
+    if not is_vip_active(user_id):
+        bot.answer_callback_query(call.id, "❌ No active VIP subscription")
+        return
+    
+    with app.app_context():
+        vip = VipSubscription.query.filter_by(user_id=user_id).first()
+        if vip:
+            expiry_str = vip.expiry_date.strftime("%Y-%m-%d %H:%M")
+            days_left = (vip.expiry_date - datetime.datetime.now()).days
+            
+            status_text = f"""
+💎 <b>VIP SUBSCRIPTION STATUS</b>
+
+✅ <b>Status:</b> ACTIVE
+🗓 <b>Expires:</b> {expiry_str}
+⏰ <b>Days Remaining:</b> {days_left} days
+💰 <b>Total Spent:</b> {vip.total_payments} ⭐
+
+🔥 <b>Benefits Active:</b>
+• Exclusive VIP content access
+• Priority direct chat
+• Special VIP teasers
+• No ads or limits
+
+💕 Thank you for your continued support!
+"""
+            bot.send_message(call.message.chat.id, status_text, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('access_'))
+def callback_access_content(call):
+    """Handle content access for owned content"""
+    content_name = call.data.replace('access_', '')
+    user_id = call.from_user.id
+    
+    if not check_user_owns_content(user_id, content_name):
+        bot.answer_callback_query(call.id, "❌ You don't own this content")
+        return
+    
+    with app.app_context():
+        content = ContentItem.query.filter_by(name=content_name).first()
+        if not content:
+            bot.answer_callback_query(call.id, "❌ Content not found")
+            return
+        
+        # Deliver content
+        try:
+            if content.file_path:
+                if content.file_path.startswith('http'):
+                    bot.send_message(call.message.chat.id, f"🔗 Access your content: {content.file_path}")
+                else:
+                    with open(content.file_path, 'rb') as content_file:
+                        bot.send_document(call.message.chat.id, content_file)
+            else:
+                bot.send_message(call.message.chat.id, f"📥 Content: {content_name} - Access granted!")
+        except Exception as e:
+            logger.error(f"Failed to deliver content {content_name}: {e}")
+            bot.send_message(call.message.chat.id, "❌ Error accessing content. Please contact support.")
+
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    """Handle /help command"""
+    help_text = """
+🤖 <b>AVAILABLE COMMANDS</b>
+
+👥 <b>User Commands:</b>
+• /start - Welcome message and main menu
+• /vip_access - VIP subscription info and purchase
+• /browse - Browse and purchase content
+• /help - Show this help message
+
+💎 <b>VIP Benefits:</b>
+• Exclusive VIP-only content
+• Priority direct chat access
+• Special VIP teasers
+
+💳 <b>Payment:</b>
+All purchases use Telegram Stars for secure payments
+
+💬 <b>Chat:</b>
+Feel free to send me messages anytime!
+"""
+    
+    bot.send_message(message.chat.id, help_text, parse_mode='HTML')
+
+# Owner commands (simplified for now)
+@bot.message_handler(commands=['owner_help'])
+def owner_help_command(message):
+    """Show owner commands"""
+    if not is_owner(message.from_user.id):
+        return
+    
+    help_text = """
+👑 <b>OWNER COMMANDS</b>
+
+📊 /owner_stats - View user and payment statistics
+👥 /owner_users - List all users
+💰 /owner_earnings - View earnings summary
+
+🛠 <b>Content Management:</b>
+• Use the database or web interface to manage content
+• VIP subscriptions are handled automatically
+
+💡 <b>Note:</b> Full admin functionality available via database
+"""
+    bot.send_message(message.chat.id, help_text, parse_mode='HTML')
+
+@bot.message_handler(commands=['owner_stats'])
+def owner_stats_command(message):
+    """Show owner statistics"""
+    if not is_owner(message.from_user.id):
+        return
+    
+    with app.app_context():
+        total_users = User.query.count()
+        active_vips = VipSubscription.query.filter(
+            VipSubscription.is_active == True,
+            VipSubscription.expiry_date > datetime.datetime.now()
+        ).count()
+        total_earnings = db.session.query(db.func.sum(User.total_stars_spent)).scalar() or 0
+        
+        stats_text = f"""
+📊 <b>BOT STATISTICS</b>
+
+👥 <b>Total Users:</b> {total_users}
+💎 <b>Active VIPs:</b> {active_vips}
+💰 <b>Total Earnings:</b> {total_earnings} ⭐
+
+📈 <b>System Status:</b> ✅ Running
+💡 <b>Database:</b> PostgreSQL Connected
+"""
+    
+    bot.send_message(message.chat.id, stats_text, parse_mode='HTML')
+
+# Run bot functions
 def run_bot():
     """Run the Telegram bot"""
     if BOT_TOKEN == "dummy_token_for_web_mode":
