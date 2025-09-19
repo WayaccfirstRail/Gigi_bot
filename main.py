@@ -2402,10 +2402,10 @@ def handle_upload_flow(message):
     # Regular upload flow continues below
     
     if session['step'] == 'waiting_for_name':
-        # Validate name (no spaces, alphanumeric + underscores)
+        # Validate name - allow spaces, letters, numbers but no underscores
         name = message.text.strip()
-        if not name or ' ' in name or not all(c.isalnum() or c == '_' for c in name):
-            bot.send_message(message.chat.id, "❌ Invalid name! Use only letters, numbers, and underscores (no spaces).\nExample: beach_photos_1")
+        if not name or not all(c.isalnum() or c == ' ' for c in name):
+            bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: Beach Photos Set 1")
             return
         
         # Check if name already exists
