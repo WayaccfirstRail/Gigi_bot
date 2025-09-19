@@ -1178,37 +1178,36 @@ def activate_vip_subscription(user_id):
         
         # Check if user already has an active subscription
         existing_subscription = VipSubscription.query.filter_by(user_id=user_id, is_active=True).first()
-    
-    if existing:
-        # Extend existing subscription
-        try:
-            current_expiry = datetime.datetime.fromisoformat(existing[0])
-            # If still active, extend from expiry date, otherwise from now
-            extend_from = max(current_expiry, now)
-        except:
-            extend_from = now
         
-        new_expiry = extend_from + datetime.timedelta(days=duration_days)
+        if existing_subscription:
+            # Extend existing subscription
+            try:
+                # If still active, extend from expiry date, otherwise from now
+                extend_from = max(existing_subscription.expiry_date, now)
+            except:
+                extend_from = now
+            
+            new_expiry = extend_from + datetime.timedelta(days=duration_days)
+            
+            existing_subscription.expiry_date = new_expiry
+            existing_subscription.is_active = True
+            existing_subscription.total_payments += 1
+            
+        else:
+            # Create new subscription
+            expiry_date = now + datetime.timedelta(days=duration_days)
+            
+            new_subscription = VipSubscription(
+                user_id=user_id,
+                start_date=now,
+                expiry_date=expiry_date,
+                is_active=True,
+                total_payments=1
+            )
+            db.session.add(new_subscription)
         
-        cursor.execute('''
-            UPDATE vip_subscriptions 
-            SET expiry_date = ?, is_active = 1, total_payments = total_payments + 1
-            WHERE user_id = ?
-        ''', (new_expiry.isoformat(), user_id))
-    else:
-        # Create new subscription
-        expiry_date = now + datetime.timedelta(days=duration_days)
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO vip_subscriptions 
-            (user_id, start_date, expiry_date, is_active, total_payments)
-            VALUES (?, ?, ?, 1, 1)
-        ''', (user_id, now.isoformat(), expiry_date.isoformat()))
-    
-    conn.commit()
-    conn.close()
-    
-    return duration_days
+        db.session.commit()
+        return duration_days
 
 def deliver_vip_content(chat_id, user_id, content_name):
     """Deliver VIP-only content for free to VIP users"""
@@ -1219,17 +1218,14 @@ def deliver_vip_content(chat_id, user_id, content_name):
         return
     
     # Get content details - ONLY access VIP content type
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, description, content_type FROM content_items WHERE name = ? AND content_type = ?', (content_name, 'vip'))
-    content = cursor.fetchone()
-    conn.close()
-    
-    if not content:
-        bot.send_message(chat_id, f"❌ VIP content '{content_name}' not found. This content may not be available in the VIP library.")
-        return
-    
-    file_path, description, content_type = content
+    with app.app_context():
+        content_item = ContentItem.query.filter_by(name=content_name, content_type='vip').first()
+        
+        if not content_item:
+            bot.send_message(chat_id, f"❌ VIP content '{content_name}' not found. This content may not be available in the VIP library.")
+            return
+        
+        file_path, description, content_type = content_item.file_path, content_item.description, content_item.content_type
     
     # Verify this is actually VIP content (double-check)
     if content_type != 'vip':
