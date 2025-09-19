@@ -3,7 +3,7 @@ import threading
 import datetime
 import telebot
 from telebot import types
-from flask import render_template_string, has_app_context
+from flask import render_template_string, has_app_context, Response, jsonify
 from app import app, db
 from models import *
 from sqlalchemy import and_, func, or_, case
@@ -6429,7 +6429,11 @@ def home():
     </body>
     </html>
     """
-    return html
+    response = Response(html)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/health')
 def health():
@@ -6439,14 +6443,24 @@ def health():
         with app.app_context():
             user_count = User.query.count()
         
-        return {
+        response_data = {
             'status': 'healthy',
             'database': 'connected',
             'user_count': user_count,
             'bot_mode': 'active' if os.getenv('BOT_TOKEN') and int(os.getenv('OWNER_ID', '0')) != 0 else 'web-only'
         }
+        response = jsonify(response_data)
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
+        error_response = jsonify({'status': 'error', 'message': str(e)})
+        error_response.status_code = 500
+        error_response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        error_response.headers['Pragma'] = 'no-cache'
+        error_response.headers['Expires'] = '0'
+        return error_response
 
 def main():
     """Main function to initialize and start the bot"""
