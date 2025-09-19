@@ -2391,6 +2391,8 @@ def handle_teaser_upload(message):
             session['file_id'] = file_id
             session['file_path'] = file_id  # Store file_id as file_path for consistency with add_teaser function
             session['step'] = 'waiting_for_description'
+            logger.info(f"Session updated for owner {owner_id}: step -> waiting_for_description, file_type -> {file_type}")
+            logger.info(f"Current session state: {session}")
         else:
             bot.send_message(message.chat.id, "❌ Please send a photo, video, or GIF file. Supported formats: JPG, PNG, MP4, GIF, MOV, AVI.")
             return
@@ -3107,7 +3109,9 @@ def handle_vip_teaser_description(message):
 def handle_teaser_description(message):
     """Handle teaser description from owner"""
     owner_id = message.from_user.id
+    logger.info(f"Teaser description handler triggered for owner {owner_id}: {message.text[:50]}...")
     session = get_upload_session(owner_id)
+    logger.info(f"Session in description handler: {session}")
     description = message.text.strip()
     
     if description.lower() == 'skip':
