@@ -472,17 +472,14 @@ def deliver_owned_content(chat_id, user_id, content_name):
         return False
     
     # Get content details
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, description FROM content_items WHERE name = ?', (content_name,))
-    content = cursor.fetchone()
-    conn.close()
-    
-    if not content:
-        bot.send_message(chat_id, f"❌ Content '{content_name}' not found.")
-        return False
-    
-    file_path, description = content
+    with app.app_context():
+        content_item = ContentItem.query.filter_by(name=content_name).first()
+        
+        if not content_item:
+            bot.send_message(chat_id, f"❌ Content '{content_name}' not found.")
+            return False
+        
+        file_path, description = content_item.file_path, content_item.description
     
     # Send re-access message
     reaccess_message = f"""
