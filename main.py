@@ -225,21 +225,23 @@ def add_or_update_user(user):
 
 def check_user_owns_content(user_id, content_name):
     """Check if user has already purchased specific content"""
-    purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
-    return purchase is not None
+    with app.app_context():
+        purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
+        return purchase is not None
 
 def get_user_purchased_content(user_id):
     """Get all BROWSE content purchased by a user - does not include VIP content"""
-    purchases = db.session.query(UserPurchase, ContentItem).join(
-        ContentItem, UserPurchase.content_name == ContentItem.name
-    ).filter(
-        UserPurchase.user_id == user_id,
-        ContentItem.content_type == 'browse'
-    ).order_by(UserPurchase.purchase_date.desc()).all()
-    
-    return [(p.UserPurchase.content_name, p.UserPurchase.purchase_date, 
-             p.UserPurchase.price_paid, p.ContentItem.description, 
-             p.ContentItem.file_path) for p in purchases]
+    with app.app_context():
+        purchases = db.session.query(UserPurchase, ContentItem).join(
+            ContentItem, UserPurchase.content_name == ContentItem.name
+        ).filter(
+            UserPurchase.user_id == user_id,
+            ContentItem.content_type == 'browse'
+        ).order_by(UserPurchase.purchase_date.desc()).all()
+        
+        return [(p.UserPurchase.content_name, p.UserPurchase.purchase_date, 
+                 p.UserPurchase.price_paid, p.ContentItem.description, 
+                 p.ContentItem.file_path) for p in purchases]
 
 def get_vip_subscribers():
     """Get all active VIP subscribers for notifications"""
@@ -1957,10 +1959,9 @@ This exclusive content is only available to VIP members. Upgrade now to unlock:
         return
     
     # User is VIP - show VIP content library
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    # Only show content marked as 'vip' type
-    cursor.execute('SELECT name, price_stars, description FROM content_items WHERE content_type = ?', ('vip',))
+    with app.app_context():
+        # Only show content marked as 'vip' type
+        vip_content = ContentItem.query.filter_by(content_type='vip').all()
     vip_items = cursor.fetchall()
     conn.close()
     
