@@ -790,7 +790,7 @@ def start_vip_upload_session(chat_id, user_id):
         return
     
     # Initialize VIP upload session
-    upload_sessions[OWNERS[0]] = {
+    upload_sessions[OWNER_ID] = {
         'type': 'vip_content',
         'step': 'waiting_for_file',
         'content_type': 'vip',
@@ -2637,7 +2637,7 @@ def owner_upload_teaser(message):
         return
     
     # Start teaser upload session
-    upload_sessions[OWNERS[0]] = {
+    upload_sessions[OWNER_ID] = {
         'type': 'teaser',
         'step': 'waiting_for_file',
         'data': {}
