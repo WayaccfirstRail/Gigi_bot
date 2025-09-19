@@ -159,8 +159,11 @@ def start_upload_session(owner_id, session_data):
     logger.info(f"Started upload session for owner {owner_id}: {session_data.get('type', 'unknown')}")
 
 def get_upload_session(owner_id):
-    """Get upload session for a specific owner"""
-    return upload_sessions.get(owner_id)
+    """Get upload session for a specific owner - returns empty dict if not found"""
+    session = upload_sessions.get(owner_id)
+    if not isinstance(session, dict):
+        return {}
+    return session
 
 def clear_upload_session(owner_id):
     """Clear upload session for a specific owner"""
@@ -173,7 +176,9 @@ def has_upload_session(owner_id, session_type=None, step=None):
     """Check if owner has an upload session with optional type/step filters"""
     if owner_id not in upload_sessions:
         return False
-    session = upload_sessions[owner_id]
+    session = upload_sessions.get(owner_id)
+    if not isinstance(session, dict):
+        return False
     if session_type and session.get('type') != session_type:
         return False
     if step and session.get('step') != step:
@@ -2886,14 +2891,18 @@ def handle_vip_file_update_upload(message):
     else:
         bot.send_message(message.chat.id, "❌ Unsupported file type for VIP content. Please send photos, videos, or GIFs only.")
 
-@bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video'], func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('type') == 'vip_teaser' and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('step') == 'waiting_for_file')
 def handle_vip_teaser_upload(message):
     """Handle VIP teaser file upload from owner"""
     teaser_key = f"{OWNER_ID}_vip_teaser"
     logger.info(f"VIP teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(teaser_key, 'None')}")
-    session = upload_sessions[teaser_key]
+    session = upload_sessions.get(teaser_key, {})
     
-    if session['step'] == 'waiting_for_file':
+    if not session or session.get('step') != 'waiting_for_file':
+        bot.send_message(message.chat.id, "❌ No active VIP teaser upload session found. Please restart the VIP teaser upload.")
+        return
+    
+    if session.get('step') == 'waiting_for_file':
         # Store file information
         file_id = None
         file_type = None
@@ -2996,11 +3005,15 @@ def handle_vip_description_message(message):
     """Handle VIP content description input from message"""
     handle_vip_description_input(message)
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_name')
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('type') == 'vip_teaser' and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('step') == 'waiting_for_name')
 def handle_vip_teaser_name(message):
     """Handle VIP teaser name input from owner"""
     teaser_key = f"{OWNER_ID}_vip_teaser"
-    session = upload_sessions[teaser_key]
+    session = upload_sessions.get(teaser_key, {})
+    
+    if not session or session.get('step') != 'waiting_for_name':
+        bot.send_message(message.chat.id, "❌ No active VIP teaser name session found. Please restart the VIP teaser upload.")
+        return
     name = message.text.strip()
     
     # Basic validation - just check if name is not empty  
@@ -3032,11 +3045,15 @@ Now add a description for this VIP teaser:
     
     bot.send_message(message.chat.id, desc_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_description')
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('type') == 'vip_teaser' and upload_sessions.get(f"{OWNER_ID}_vip_teaser", {}).get('step') == 'waiting_for_description')
 def handle_vip_teaser_description(message):
     """Handle VIP teaser description from owner"""
     teaser_key = f"{OWNER_ID}_vip_teaser"
-    session = upload_sessions[teaser_key]
+    session = upload_sessions.get(teaser_key, {})
+    
+    if not session or session.get('step') != 'waiting_for_description':
+        bot.send_message(message.chat.id, "❌ No active VIP teaser description session found. Please restart the VIP teaser upload.")
+        return
     description = message.text.strip()
     
     if description.lower() == 'skip':
@@ -3044,7 +3061,14 @@ def handle_vip_teaser_description(message):
     
     # Save VIP teaser to database
     try:
-        add_teaser(session['file_path'], session['file_type'], description, vip_only=True)
+        file_path = session.get('file_path')
+        file_type = session.get('file_type')
+        
+        if not file_path or not file_type:
+            bot.send_message(message.chat.id, "❌ VIP teaser file information is missing. Please restart the VIP teaser upload.")
+            return
+            
+        add_teaser(file_path, file_type, description, vip_only=True)
         
         # Send notifications to all VIP subscribers about the new VIP teaser
         notification_stats = notify_vip_teaser_uploaded(description)
@@ -3053,7 +3077,7 @@ def handle_vip_teaser_description(message):
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
 🏷️ <b>Name:</b> {session.get('teaser_title', 'Unnamed VIP Teaser')}
-🎬 <b>Type:</b> {session['file_type'].title()}
+🎬 <b>Type:</b> {session.get('file_type', 'Unknown').title()}
 📝 <b>Description:</b> {description}
 
 💎 Your VIP teaser is now live! VIP members will see this exclusive content when they use /teaser.
@@ -3099,7 +3123,7 @@ def handle_teaser_description(message):
         success_text = f"""
 🎉 <b>FREE TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
-🎬 <b>Type:</b> {session['file_type'].title()}
+🎬 <b>Type:</b> {session.get('file_type', 'Unknown').title()}
 📝 <b>Description:</b> {description}
 
 🎁 Your free teaser is now live! Non-VIP users will see this when they use /teaser.
@@ -5143,7 +5167,7 @@ def handle_callback_query(call):
                         success_text = f"""
 🎉 <b>FREE TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
-🎬 <b>Type:</b> {session['file_type'].title()}
+🎬 <b>Type:</b> {session.get('file_type', 'Unknown').title()}
 📝 <b>Description:</b> {session['description']}
 
 🎁 Your free teaser is now live! Non-VIP users will see this when they use /teaser.
@@ -5493,7 +5517,7 @@ Add a description that VIP members will see:
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
 🏷️ <b>Name:</b> {session.get('teaser_title', 'Unnamed VIP Teaser')}
-🎬 <b>Type:</b> {session['file_type'].title()}
+🎬 <b>Type:</b> {session.get('file_type', 'Unknown').title()}
 📝 <b>Description:</b> {description}
 
 💎 Your VIP teaser is now live! VIP members will see this exclusive content when they use /teaser.
@@ -5533,7 +5557,7 @@ Add a description that VIP members will see:
     elif call.data.startswith("edit_vip_teaser_"):
         if call.from_user.id == OWNER_ID:
             teaser_id = int(call.data.replace("edit_vip_teaser_", ""))
-            start_vip_teaser_edit_session(call.message.chat.id, teaser_id)
+            start_vip_teaser_edit_session(call.message.chat.id, call.from_user.id, teaser_id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "vip_teasers_collection":
