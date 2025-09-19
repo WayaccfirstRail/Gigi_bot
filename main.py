@@ -2956,8 +2956,8 @@ def handle_vip_teaser_name(message):
         bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: Beach Sunset VIP")
         return
     
-    # Store name and move to description step
-    session['name'] = name
+    # Store teaser title for display only (not saved to database)
+    session['teaser_title'] = name
     session['step'] = 'waiting_for_description'
     
     desc_text = f"""
@@ -3000,6 +3000,7 @@ def handle_vip_teaser_description(message):
         success_text = f"""
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
+🏷️ <b>Name:</b> {session.get('teaser_title', 'Unnamed VIP Teaser')}
 🎬 <b>Type:</b> {session['file_type'].title()}
 📝 <b>Description:</b> {description}
 
