@@ -4288,7 +4288,7 @@ Select which VIP teaser you want to edit (replace photo/video):
     
     bot.send_message(chat_id, edit_text, reply_markup=markup, parse_mode='HTML')
 
-def start_vip_teaser_edit_session(chat_id, teaser_id):
+def start_vip_teaser_edit_session(chat_id, owner_id, teaser_id):
     """Start VIP teaser edit session"""
     with app.app_context():
         # Get teaser info using SQLAlchemy
@@ -4301,14 +4301,14 @@ def start_vip_teaser_edit_session(chat_id, teaser_id):
         file_path, file_type, description = teaser.file_path, teaser.file_type, teaser.description
     
     # Initialize edit session
-    upload_sessions[OWNER_ID] = {
+    start_upload_session(owner_id, {
         'type': 'vip_teaser_edit',
         'step': 'waiting_for_file',
         'teaser_id': teaser_id,
         'old_file_path': file_path,
         'old_file_type': file_type,
         'old_description': description
-    }
+    })
     
     edit_text = f"""
 ✏️ <b>EDIT VIP TEASER</b> ✏️
@@ -5118,14 +5118,15 @@ def handle_callback_query(call):
             })
             owner_list_users(fake_message)
     elif call.data == "cancel_upload":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id):
+            clear_upload_session(call.from_user.id)
             bot.send_message(call.message.chat.id, "❌ Upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active upload session.")
     elif call.data == "skip_description":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
-            session = upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id):
+            owner_id = call.from_user.id
+            session = get_upload_session(owner_id)
             if session['step'] == 'waiting_for_description':
                 # Check session type to route to correct handler
                 if session.get('type') == 'teaser':
@@ -5152,12 +5153,12 @@ def handle_callback_query(call):
                         bot.send_message(call.message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
                         
                         # Clear upload session
-                        del upload_sessions[OWNER_ID]
+                        clear_upload_session(owner_id)
                         
                     except Exception as e:
                         bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
-                        if OWNER_ID in upload_sessions:
-                            del upload_sessions[OWNER_ID]
+                        if has_upload_session(owner_id):
+                            clear_upload_session(owner_id)
                 else:
                     # Regular content upload
                     session['description'] = f"Exclusive {session.get('file_type', 'content').lower()} content"
@@ -5167,7 +5168,7 @@ def handle_callback_query(call):
         else:
             bot.send_message(call.message.chat.id, "❌ No active upload session.")
     elif call.data == "start_upload":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             # Create a fake message object for the owner_upload_content function
             fake_message = type('obj', (object,), {
                 'chat': call.message.chat,
