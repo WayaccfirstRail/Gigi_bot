@@ -2330,7 +2330,11 @@ def handle_teaser_upload(message):
     logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {get_upload_session(owner_id)}")
     session = get_upload_session(owner_id)
     
-    if session['step'] == 'waiting_for_file':
+    if not session:
+        bot.send_message(message.chat.id, "❌ No active teaser upload session found. Please start with Teaser Management.")
+        return
+        
+    if session.get('step') == 'waiting_for_file':
         # Store file information
         file_id = None
         file_type = None
