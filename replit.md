@@ -6,6 +6,18 @@ The bot provides a dual interface: fans can browse teasers, purchase content wit
 
 # Recent Changes
 
+**September 19, 2025 - PostgreSQL Database Migration and Complete Setup**
+- ✅ **MAJOR UPGRADE**: Migrated from SQLite to PostgreSQL database for production readiness
+- ✅ Implemented Flask-SQLAlchemy models following Replit development guidelines
+- ✅ Successfully configured Flask web server to run on 0.0.0.0:5000 with webview output
+- ✅ Database initialization working properly with PostgreSQL - all tables and default data created
+- ✅ Health endpoints working at / and /health for monitoring with database connection testing
+- ✅ Production deployment configured with Gunicorn for VM target to maintain persistent operation
+- ✅ Web-only mode implemented - Flask server runs even without Telegram credentials
+- ✅ Error handling improved for graceful degradation when bot tokens are missing
+- ✅ Proper Flask app structure with app.py, models.py, and main.py separation
+- ⚠️ **REQUIRED SETUP**: Add BOT_TOKEN and OWNER_ID to Replit Secrets to enable full Telegram bot functionality
+
 **September 18, 2025 - Complete Replit Environment Setup**
 - ✅ Successfully configured Flask web server to run on 0.0.0.0:5000 with webview output
 - ✅ Database initialization working properly with SQLite (content_bot.db) - existing data preserved
@@ -33,7 +45,7 @@ Preferred communication style: Simple, everyday language.
 - **Environment Variables**: Secure storage of BOT_TOKEN and OWNER_ID through Replit Secrets
 
 ## Data Layer
-- **SQLite Database**: Local file-based storage solution chosen for simplicity and zero-configuration deployment
+- **PostgreSQL Database**: Production-ready relational database with Flask-SQLAlchemy ORM
 - **Database Schema Design**:
   - Users table: Tracks fan demographics, spending history, and engagement metrics
   - Content items table: Stores purchasable content with pricing and file references
