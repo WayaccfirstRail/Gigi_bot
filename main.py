@@ -20,16 +20,30 @@ import mimetypes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# App context decorator for TeleBot handlers
-def with_app_context(fn):
-    """Decorator to ensure Flask app context for TeleBot handlers"""
+# Universal safety decorator for TeleBot handlers
+def safe_handler(fn):
+    """Universal decorator that ensures Flask app context and catches all exceptions for TeleBot handlers"""
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if has_app_context():
-            return fn(*args, **kwargs)
-        with app.app_context():
-            return fn(*args, **kwargs)
+        try:
+            if has_app_context():
+                return fn(*args, **kwargs)
+            with app.app_context():
+                return fn(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Handler {fn.__name__} crashed: {e}")
+            # Try to send error message to user if possible
+            try:
+                if args and hasattr(args[0], 'chat'):
+                    bot.send_message(args[0].chat.id, "⚠️ Temporary issue. Please try again in a moment.")
+                elif args and hasattr(args[0], 'message') and hasattr(args[0].message, 'chat'):
+                    bot.send_message(args[0].message.chat.id, "⚠️ Temporary issue. Please try again in a moment.")
+            except:
+                pass  # Fail silently if can't send message
     return wrapper
+
+# Alias for backward compatibility
+with_app_context = safe_handler
 
 # Bot token and owner IDs from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
