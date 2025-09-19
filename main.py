@@ -2737,7 +2737,7 @@ def handle_vip_file_update_upload(message):
                 updated_count = 0
         
         # Clear upload session
-        del upload_sessions[OWNERS[0]]
+        del upload_sessions[OWNER_ID]
         
         if updated_count > 0:
             success_text = f"""
@@ -3075,8 +3075,8 @@ def handle_teaser_description(message):
         bot.send_message(OWNER_ID, f"❌ Error saving teaser: {str(e)}")
     
     # Clear upload session
-    if OWNERS[0] in upload_sessions:
-        del upload_sessions[OWNERS[0]]
+    if OWNER_ID in upload_sessions:
+        del upload_sessions[OWNER_ID]
 
 @bot.message_handler(commands=['owner_list_teasers'])
 def owner_list_teasers(message):
