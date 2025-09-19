@@ -5032,8 +5032,41 @@ def handle_callback_query(call):
         if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions:
             session = upload_sessions[OWNERS[0]]
             if session['step'] == 'waiting_for_description':
-                session['description'] = f"Exclusive {session.get('file_type', 'content').lower()} content"
-                save_uploaded_content(session)
+                # Check session type to route to correct handler
+                if session.get('type') == 'teaser':
+                    # This should use the teaser-specific handler
+                    session['description'] = "Exclusive teaser content"
+                    try:
+                        add_teaser(session['file_id'], session['file_type'], session['description'])
+                        
+                        success_text = f"""
+🎉 <b>FREE TEASER UPLOADED SUCCESSFULLY!</b> 🎉
+
+🎬 <b>Type:</b> {session['file_type'].title()}
+📝 <b>Description:</b> {session['description']}
+
+🎁 Your free teaser is now live! Non-VIP users will see this when they use /teaser.
+
+🔄 You can upload multiple teasers - the most recent one will be shown first.
+"""
+                        
+                        markup = types.InlineKeyboardMarkup()
+                        markup.add(types.InlineKeyboardButton("🎬 Upload Another Free Teaser", callback_data="start_teaser_upload"))
+                        markup.add(types.InlineKeyboardButton("👥 View Customers", callback_data="owner_list_users"))
+                        
+                        bot.send_message(call.message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
+                        
+                        # Clear upload session
+                        del upload_sessions[OWNERS[0]]
+                        
+                    except Exception as e:
+                        bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
+                        if OWNERS[0] in upload_sessions:
+                            del upload_sessions[OWNERS[0]]
+                else:
+                    # Regular content upload
+                    session['description'] = f"Exclusive {session.get('file_type', 'content').lower()} content"
+                    save_uploaded_content(session)
             else:
                 bot.send_message(call.message.chat.id, "❌ Invalid step for skipping description.")
         else:
