@@ -1078,17 +1078,15 @@ def add_vip_content(name, price_stars, file_path, description):
 
 def update_vip_content(name, price_stars, file_path, description):
     """Update existing VIP content"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE content_items 
-        SET price_stars = ?, file_path = ?, description = ?
-        WHERE name = ? AND content_type = ?
-    ''', (price_stars, file_path, description, name, 'vip'))
-    updated_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return updated_count > 0
+    with app.app_context():
+        content = ContentItem.query.filter_by(name=name, content_type='vip').first()
+        if content:
+            content.price_stars = price_stars
+            content.file_path = file_path
+            content.description = description
+            db.session.commit()
+            return True
+        return False
 
 def delete_vip_content(name):
     """Delete VIP content by name"""
