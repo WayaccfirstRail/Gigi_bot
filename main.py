@@ -6635,80 +6635,14 @@ def clear_webhook_and_polling():
         logger.warning(f"Error clearing webhook (this is usually fine): {e}")
 
 def run_bot():
-    """Run the bot with infinity polling and better error handling"""
-    import time
-    
-    # Acquire exclusive lock to prevent multiple instances
-    if not acquire_bot_lock():
-        logger.error("Cannot start bot - another instance is already running")
-        return
-    
+    """Run the bot with simple polling"""
     try:
-        # First, clear any existing webhook to prevent conflicts
-        clear_webhook_and_polling()
-        
-        # Clear handlers to prevent duplicates from previous registrations
-        clear_existing_handlers()
-        
-        max_retries = 5
-        retry_delay = 5  # seconds
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Starting bot polling (attempt {attempt + 1}/{max_retries})...")
-                
-                # Clear webhook again right before polling starts
-                if attempt > 0:  # On retries, try clearing webhook again
-                    try:
-                        bot.remove_webhook()
-                        time.sleep(1)
-                    except:
-                        pass
-                
-                with app.app_context():
-                    bot.infinity_polling(
-                        none_stop=True,
-                        timeout=30,  # 30 second timeout for requests
-                        skip_pending=True,  # Skip pending messages on restart
-                        # num_threads parameter removed - not supported in current pyTelegramBotAPI
-                    )
-                logger.info("Bot polling started successfully!")
-                break  # If we reach here, polling started successfully
-                
-            except Exception as e:
-                error_str = str(e)
-                logger.error(f"Bot polling failed (attempt {attempt + 1}/{max_retries}): {error_str}")
-                
-                # Special handling for 409 conflicts
-                if "409" in error_str and "getUpdates" in error_str:
-                    logger.info("Detected 409 getUpdates conflict - another bot instance is running!")
-                    if attempt < max_retries - 1:
-                        # Be more aggressive for 409 conflicts
-                        longer_delay = 30 + (attempt * 10)  # 30, 40, 50, 60 seconds
-                        logger.info(f"Waiting {longer_delay} seconds for other bot instance to timeout...")
-                        time.sleep(longer_delay)
-                        
-                        # Try to clear webhook again after waiting
-                        try:
-                            logger.info("Attempting to clear webhook again after 409 conflict...")
-                            bot.remove_webhook()
-                            time.sleep(5)
-                        except:
-                            pass
-                
-                if attempt < max_retries - 1:
-                    logger.info(f"Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                    retry_delay *= 2  # Exponential backoff
-                else:
-                    logger.error("Max retries reached. Bot polling could not be started.")
-                    logger.info("Flask server will continue running for health checks.")
-                    # Don't exit, let Flask continue running for health checks
-                    break
-    
-    finally:
-        # Always release the lock when bot stops
-        release_bot_lock()
+        logger.info("Starting bot polling...")
+        bot.infinity_polling(skip_pending=True)
+        logger.info("Bot polling started successfully!")
+    except Exception as e:
+        logger.error(f"Bot polling failed: {e}")
+        logger.info("Flask server will continue running for health checks.")
 
 # Flask Routes
 @app.route('/')
