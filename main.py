@@ -1638,14 +1638,29 @@ def teaser_command(message):
                     else:
                         bot.send_document(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
                 elif len(file_path) > 50 and not file_path.startswith('/'):
-                    # It's a Telegram file_id
+                    # It's a Telegram file_id - use file_type from database
                     try:
-                        bot.send_photo(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
-                    except:
-                        try:
-                            bot.send_video(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
-                        except:
-                            bot.send_message(message.chat.id, f"💎 Your exclusive VIP teaser is ready, but there was a technical issue. Please contact me directly!")
+                        if file_type == 'photo':
+                            # Try photo first, fallback to document for uncompressed photos
+                            try:
+                                bot.send_photo(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                            except:
+                                bot.send_document(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                        elif file_type == 'video':
+                            # Try video first, fallback to document for uncompressed videos
+                            try:
+                                bot.send_video(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                            except:
+                                bot.send_document(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                        else:
+                            # Try document first, fallback to photo for edge cases
+                            try:
+                                bot.send_document(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                            except:
+                                bot.send_photo(message.chat.id, file_path, caption=f"💎 VIP Exclusive")
+                    except Exception as e:
+                        logger.error(f"Error sending VIP teaser media: {e}")
+                        bot.send_message(message.chat.id, f"💎 Your exclusive VIP teaser is ready, but there was a technical issue. Please contact me directly!")
                 else:
                     # It's a local file path
                     with open(file_path, 'rb') as file:
@@ -1728,11 +1743,25 @@ Here's a little preview of what's waiting for you in my exclusive collection...
                     elif file_type == 'video':
                         bot.send_video(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
                 elif len(file_path) > 50 and not file_path.startswith('/'):
-                    # It's a Telegram file_id
+                    # It's a Telegram file_id - handle both compressed and uncompressed photos
                     if file_type == 'photo':
-                        bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        # Try photo first, fallback to document for uncompressed photos
+                        try:
+                            bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        except:
+                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
                     elif file_type == 'video':
-                        bot.send_video(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        # Try video first, fallback to document for uncompressed videos
+                        try:
+                            bot.send_video(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        except:
+                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                    else:
+                        # Try document first, fallback to photo for edge cases
+                        try:
+                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        except:
+                            bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
                 else:
                     # It's a local file path
                     with open(file_path, 'rb') as file:
