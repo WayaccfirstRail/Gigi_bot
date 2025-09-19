@@ -111,3 +111,12 @@ class Teaser(db.Model):
     description = db.Column(Text, nullable=True)
     created_date = db.Column(DateTime, default=func.now())
     vip_only = db.Column(Boolean, default=False)
+
+
+class BlockedUser(db.Model):
+    __tablename__ = 'blocked_users'
+    
+    user_id = db.Column(BigInteger, primary_key=True, autoincrement=False)
+    blocked_date = db.Column(DateTime, default=func.now())
+    reason = db.Column(Text, nullable=True)
+    blocked_by = db.Column(BigInteger, nullable=False)

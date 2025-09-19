@@ -202,6 +202,103 @@ upload_sessions = {}
 # Dictionary to store notification composition sessions
 notification_sessions = {}
 
+# Session timeout in seconds (30 minutes)
+SESSION_TIMEOUT = 30 * 60
+
+def cleanup_expired_sessions():
+    """Clean up expired notification sessions"""
+    current_time = time.time()
+    expired_chats = []
+    
+    for chat_id, session in notification_sessions.items():
+        if isinstance(session, dict) and 'timestamp' in session:
+            if current_time - session['timestamp'] > SESSION_TIMEOUT:
+                expired_chats.append(chat_id)
+    
+    for chat_id in expired_chats:
+        del notification_sessions[chat_id]
+        logger.info(f"Cleaned up expired notification session for chat {chat_id}")
+    
+    return len(expired_chats)
+
+def is_session_valid(chat_id):
+    """Check if notification session is valid and not expired"""
+    if chat_id not in notification_sessions:
+        return False
+    
+    session = notification_sessions[chat_id]
+    if not isinstance(session, dict):
+        return False
+    
+    # Check if session has timestamp
+    if 'timestamp' not in session:
+        # Add timestamp to legacy sessions
+        session['timestamp'] = time.time()
+        return True
+    
+    # Check if session is expired
+    current_time = time.time()
+    if current_time - session['timestamp'] > SESSION_TIMEOUT:
+        return False
+    
+    return True
+
+def update_session_timestamp(chat_id):
+    """Update session timestamp to keep it alive"""
+    if chat_id in notification_sessions:
+        notification_sessions[chat_id]['timestamp'] = time.time()
+
+def get_session_info(chat_id):
+    """Get session information for debugging"""
+    if chat_id not in notification_sessions:
+        return "No session found"
+    
+    session = notification_sessions[chat_id]
+    if not isinstance(session, dict):
+        return "Invalid session format"
+    
+    current_time = time.time()
+    session_age = current_time - session.get('timestamp', current_time)
+    
+    info = {
+        'target_group': session.get('target_group', 'unknown'),
+        'users_count': len(session.get('users', [])),
+        'waiting_for_message': session.get('waiting_for_message', False),
+        'has_message_text': bool(session.get('message_text')),
+        'session_age_seconds': int(session_age),
+        'expires_in_seconds': int(SESSION_TIMEOUT - session_age)
+    }
+    
+    return info
+
+def recover_session_state(chat_id, target_group):
+    """Attempt to recover session state after errors"""
+    try:
+        # Get fresh user list for the target group
+        if target_group == 'all':
+            users = get_all_users()
+        elif target_group == 'vip':
+            users = get_vip_subscribers()
+        elif target_group == 'non_vip':
+            users = get_non_vip_users()
+        else:
+            return False
+        
+        # Recreate session
+        notification_sessions[chat_id] = {
+            'target_group': target_group,
+            'users': users,
+            'waiting_for_message': True,
+            'timestamp': time.time()
+        }
+        
+        logger.info(f"Recovered notification session for chat {chat_id}, target: {target_group}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to recover session for chat {chat_id}: {e}")
+        return False
+
 # Helper functions for session management
 def start_upload_session(owner_id, session_data):
     """Start an upload session for a specific owner"""
@@ -1667,6 +1764,11 @@ def download_and_upload_image(url, chat_id=None):
 @safe_handler
 def start_command(message):
     """Handle /start command"""
+    # Check if user is blocked before processing
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
+        
     add_or_update_user(message.from_user)
     
     # Check VIP status
@@ -1702,6 +1804,11 @@ Get ready to dive into me exclusive, unfiltered, and all yours. 🔥
 @safe_handler
 def teaser_command(message):
     """Handle /teaser command with VIP-exclusive content"""
+    # Check if user is blocked before processing
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
+        
     add_or_update_user(message.from_user)
     
     # Check VIP status
@@ -1832,7 +1939,7 @@ def teaser_command(message):
 
 Here's a little preview of what's waiting for you in my exclusive collection...
 
-{safe_description}
+🎬 Free Teaser Preview
 
 💝 This is just a taste of what I have for my special fans. Want to see more? Check out my full content library!
 
@@ -1856,36 +1963,36 @@ Here's a little preview of what's waiting for you in my exclusive collection...
                 if file_path.startswith('http'):
                     # It's a URL
                     if file_type == 'photo':
-                        bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        bot.send_photo(message.chat.id, file_path, caption=safe_description)
                     elif file_type == 'video':
-                        bot.send_video(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                        bot.send_video(message.chat.id, file_path, caption=safe_description)
                 elif len(file_path) > 50 and not file_path.startswith('/'):
                     # It's a Telegram file_id - handle both compressed and uncompressed photos
                     if file_type == 'photo':
                         # Try photo first, fallback to document for uncompressed photos
                         try:
-                            bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_photo(message.chat.id, file_path, caption=safe_description)
                         except:
-                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_document(message.chat.id, file_path, caption=safe_description)
                     elif file_type == 'video':
                         # Try video first, fallback to document for uncompressed videos
                         try:
-                            bot.send_video(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_video(message.chat.id, file_path, caption=safe_description)
                         except:
-                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_document(message.chat.id, file_path, caption=safe_description)
                     else:
                         # Try document first, fallback to photo for edge cases
                         try:
-                            bot.send_document(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_document(message.chat.id, file_path, caption=safe_description)
                         except:
-                            bot.send_photo(message.chat.id, file_path, caption="🎬 Free Teaser Preview")
+                            bot.send_photo(message.chat.id, file_path, caption=safe_description)
                 else:
                     # It's a local file path
                     with open(file_path, 'rb') as file:
                         if file_type == 'photo':
-                            bot.send_photo(message.chat.id, file, caption="🎬 Free Teaser Preview")
+                            bot.send_photo(message.chat.id, file, caption=safe_description)
                         elif file_type == 'video':
-                            bot.send_video(message.chat.id, file, caption="🎬 Free Teaser Preview")
+                            bot.send_video(message.chat.id, file, caption=safe_description)
             except Exception as e:
                 logger.error(f"Error sending teaser media: {e}")
                 bot.send_message(message.chat.id, "🎬 Teaser content is being prepared...")
@@ -1918,8 +2025,14 @@ Here's a little preview of what's waiting for you in my exclusive collection...
     bot.send_message(message.chat.id, teaser_text, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(commands=['buy'])
+@safe_handler
 def buy_command(message):
     """Handle /buy command"""
+    # Check if user is blocked before processing
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
+        
     add_or_update_user(message.from_user)
     
     # Parse command for specific item
@@ -2205,6 +2318,11 @@ More premium VIP content is being added regularly. Check back soon for exclusive
 @safe_handler
 def help_command(message):
     """Handle /help command"""
+    # Check if user is blocked before processing
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
+        
     add_or_update_user(message.from_user)
     
     help_text = """
@@ -3856,13 +3974,338 @@ def show_user_management_menu(chat_id):
 Choose an action below to manage users and analytics:
 """
     
-    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(types.InlineKeyboardButton("👥 View Customers", callback_data="owner_list_users"))
     markup.add(types.InlineKeyboardButton("📊 Analytics Dashboard", callback_data="analytics_dashboard"))
     markup.add(types.InlineKeyboardButton("💎 View VIP Members", callback_data="owner_list_vips"))
+    markup.add(
+        types.InlineKeyboardButton("🚫 Block User", callback_data="start_block_user"),
+        types.InlineKeyboardButton("✅ Unblock User", callback_data="start_unblock_user")
+    )
+    markup.add(types.InlineKeyboardButton("📋 View Blocked Users", callback_data="view_blocked_users"))
     markup.add(types.InlineKeyboardButton("🔙 Back to Owner Help", callback_data="owner_help"))
     
     bot.send_message(chat_id, menu_text, reply_markup=markup, parse_mode='Markdown')
+
+def start_block_user_interface(chat_id, owner_id):
+    """Start the guided user blocking interface"""
+    # Initialize blocking session
+    start_upload_session(owner_id, {
+        'type': 'block_user',
+        'step': 'waiting_for_user_input',
+        'chat_id': chat_id
+    })
+    
+    block_text = """
+🚫 <b>BLOCK USER</b> 🚫
+
+🎯 <b>Enter the user to block:</b>
+You can use either format:
+
+📋 <b>User ID:</b> 123456789
+🔗 <b>Username:</b> @username
+
+💡 <b>Example:</b>
+• 987654321
+• @problemuser
+
+📤 Send the user ID or @username now:
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="user_management_menu"))
+    
+    bot.send_message(chat_id, block_text, reply_markup=markup, parse_mode='HTML')
+
+def start_unblock_user_interface(chat_id, owner_id):
+    """Start the guided user unblocking interface"""
+    # Initialize unblocking session
+    start_upload_session(owner_id, {
+        'type': 'unblock_user',
+        'step': 'waiting_for_user_input',
+        'chat_id': chat_id
+    })
+    
+    unblock_text = """
+✅ <b>UNBLOCK USER</b> ✅
+
+🎯 <b>Enter the user to unblock:</b>
+You can use either format:
+
+📋 <b>User ID:</b> 123456789
+🔗 <b>Username:</b> @username
+
+💡 <b>Example:</b>
+• 987654321
+• @unblockeduser
+
+📤 Send the user ID or @username now:
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="user_management_menu"))
+    
+    bot.send_message(chat_id, unblock_text, reply_markup=markup, parse_mode='HTML')
+
+def show_blocked_users_list(chat_id):
+    """Display list of all blocked users"""
+    blocked_users = get_blocked_users()
+    
+    if not blocked_users:
+        empty_text = """
+📋 <b>BLOCKED USERS LIST</b> 📋
+
+✅ <b>No users are currently blocked!</b>
+
+Your bot is welcoming all users at the moment.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🚫 Block User", callback_data="start_block_user"))
+        markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+        
+        bot.send_message(chat_id, empty_text, reply_markup=markup, parse_mode='HTML')
+        return
+    
+    # Create blocked users list
+    list_text = f"""
+📋 <b>BLOCKED USERS LIST</b> 📋
+
+🚫 <b>Total Blocked:</b> {len(blocked_users)}
+
+<b>Blocked Users:</b>
+"""
+    
+    for user_id, blocked_date, reason, blocked_by, first_name, username in blocked_users:
+        # Format user display name
+        name = first_name or "No name"
+        username_display = f"@{username}" if username else "No username"
+        
+        # Format blocked date
+        try:
+            if isinstance(blocked_date, str):
+                date_obj = datetime.datetime.fromisoformat(blocked_date)
+            else:
+                date_obj = blocked_date
+            formatted_date = date_obj.strftime("%Y-%m-%d %H:%M")
+        except:
+            formatted_date = str(blocked_date)
+        
+        # Format reason
+        reason_display = reason[:50] + "..." if reason and len(reason) > 50 else (reason or "No reason given")
+        
+        # Who blocked them
+        blocker_name = get_user_display_name(blocked_by) if blocked_by != OWNER_ID else "Owner"
+        
+        list_text += f"""
+👤 <b>{name}</b> ({username_display})
+   🆔 ID: <code>{user_id}</code>
+   📅 Blocked: {formatted_date}
+   📝 Reason: {reason_display}
+   👮 By: {blocker_name}
+
+"""
+    
+    # Add action buttons
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🚫 Block More", callback_data="start_block_user"),
+        types.InlineKeyboardButton("✅ Unblock User", callback_data="start_unblock_user")
+    )
+    markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+    
+    bot.send_message(chat_id, list_text, reply_markup=markup, parse_mode='HTML')
+
+def handle_block_user_input(message, session):
+    """Handle user input for blocking (user ID or @username)"""
+    user_input = message.text.strip()
+    chat_id = session['chat_id']
+    owner_id = message.from_user.id
+    
+    # Determine if input is user ID or username
+    if user_input.startswith('@'):
+        # Username format
+        username = user_input
+        user_id, first_name = resolve_username_to_user_id(username)
+        
+        if not user_id:
+            error_text = f"""
+❌ <b>USER NOT FOUND</b> ❌
+
+Could not find user {username} in the database.
+
+💡 <b>Note:</b> The user must have interacted with your bot at least once to be in the database.
+
+🔄 Try again with a different user ID or @username:
+"""
+            bot.send_message(chat_id, error_text, parse_mode='HTML')
+            return
+            
+        target_display = f"{first_name} ({username})"
+        target_id = user_id
+        
+    elif user_input.isdigit():
+        # User ID format
+        target_id = int(user_input)
+        target_display = get_user_display_name(target_id)
+        
+    else:
+        error_text = """
+❌ <b>INVALID FORMAT</b> ❌
+
+Please enter either:
+• User ID (numbers only): 123456789
+• Username (with @): @username
+
+🔄 Try again:
+"""
+        bot.send_message(chat_id, error_text, parse_mode='HTML')
+        return
+    
+    # Update session for reason input
+    session['step'] = 'waiting_for_reason'
+    session['target_id'] = target_id
+    session['target_display'] = target_display
+    upload_sessions[owner_id] = session
+    
+    reason_text = f"""
+🚫 <b>BLOCK USER</b> 🚫
+
+🎯 <b>User to block:</b> {target_display}
+🆔 <b>User ID:</b> <code>{target_id}</code>
+
+📝 <b>Reason (Optional):</b>
+Why are you blocking this user? This helps you track blocks later.
+
+💡 <b>Examples:</b>
+• Spam messages
+• Inappropriate behavior
+• Harassment
+• Policy violation
+
+📤 Send the reason, or type "skip" to block without reason:
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("⏭️ Skip Reason", callback_data="skip_block_reason"))
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="user_management_menu"))
+    
+    bot.send_message(chat_id, reason_text, reply_markup=markup, parse_mode='HTML')
+
+def handle_block_reason_input(message, session):
+    """Handle reason input for blocking"""
+    reason = message.text.strip() if message.text.strip().lower() != 'skip' else None
+    chat_id = session['chat_id']
+    target_id = session['target_id']
+    target_display = session['target_display']
+    owner_id = message.from_user.id
+    
+    # Execute the block
+    success, result_message = block_user(target_id, reason, owner_id)
+    
+    if success:
+        success_text = f"""
+✅ <b>USER BLOCKED SUCCESSFULLY</b> ✅
+
+🚫 <b>Blocked User:</b> {target_display}
+🆔 <b>User ID:</b> <code>{target_id}</code>
+📝 <b>Reason:</b> {reason or "No reason provided"}
+
+🔒 This user can no longer interact with your bot.
+"""
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("🚫 Block Another", callback_data="start_block_user"),
+            types.InlineKeyboardButton("📋 View Blocked", callback_data="view_blocked_users")
+        )
+        markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+        
+        bot.send_message(chat_id, success_text, reply_markup=markup, parse_mode='HTML')
+        
+    else:
+        error_text = f"""
+❌ <b>BLOCKING FAILED</b> ❌
+
+🚫 <b>User:</b> {target_display}
+❌ <b>Error:</b> {result_message}
+
+🔄 Please try again or contact support if the issue persists.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔄 Try Again", callback_data="start_block_user"))
+        markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+        
+        bot.send_message(chat_id, error_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Clear session
+    clear_upload_session(owner_id)
+
+def handle_unblock_user_input(message, session):
+    """Handle user input for unblocking (user ID or @username)"""
+    user_input = message.text.strip()
+    chat_id = session['chat_id']
+    owner_id = message.from_user.id
+    
+    # Determine if input is user ID or username
+    if user_input.startswith('@'):
+        # Username format
+        success, result_message = unblock_user_by_username(user_input)
+        target_display = user_input
+        
+    elif user_input.isdigit():
+        # User ID format
+        target_id = int(user_input)
+        success, result_message = unblock_user(target_id)
+        target_display = get_user_display_name(target_id)
+        
+    else:
+        error_text = """
+❌ <b>INVALID FORMAT</b> ❌
+
+Please enter either:
+• User ID (numbers only): 123456789
+• Username (with @): @username
+
+🔄 Try again:
+"""
+        bot.send_message(chat_id, error_text, parse_mode='HTML')
+        return
+    
+    # Show result
+    if success:
+        success_text = f"""
+✅ <b>USER UNBLOCKED SUCCESSFULLY</b> ✅
+
+✅ <b>Unblocked User:</b> {target_display}
+
+🔓 This user can now interact with your bot again.
+"""
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            types.InlineKeyboardButton("✅ Unblock Another", callback_data="start_unblock_user"),
+            types.InlineKeyboardButton("📋 View Blocked", callback_data="view_blocked_users")
+        )
+        markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+        
+        bot.send_message(chat_id, success_text, reply_markup=markup, parse_mode='HTML')
+        
+    else:
+        error_text = f"""
+❌ <b>UNBLOCKING FAILED</b> ❌
+
+✅ <b>User:</b> {target_display}
+❌ <b>Error:</b> {result_message}
+
+💡 <b>Tip:</b> Make sure the user is actually blocked and the ID/username is correct.
+"""
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔄 Try Again", callback_data="start_unblock_user"))
+        markup.add(types.InlineKeyboardButton("📋 View Blocked", callback_data="view_blocked_users"))
+        markup.add(types.InlineKeyboardButton("🔙 Back to User Management", callback_data="user_management_menu"))
+        
+        bot.send_message(chat_id, error_text, reply_markup=markup, parse_mode='HTML')
+    
+    # Clear session
+    clear_upload_session(owner_id)
 
 def show_bot_config_menu(chat_id):
     """Show Bot Configuration section menu"""
@@ -4592,6 +5035,122 @@ def show_vip_content_edit_interface(chat_id, content_name):
     
     bot.send_message(chat_id, edit_text, reply_markup=markup, parse_mode='HTML', disable_web_page_preview=False)
 
+
+# User Blocking System Functions
+
+def is_user_blocked(user_id):
+    """Check if a user is blocked"""
+    with app.app_context():
+        blocked_user = BlockedUser.query.filter_by(user_id=user_id).first()
+        return blocked_user is not None
+
+def block_user(user_id, reason=None, blocked_by=None):
+    """Block a user by user_id"""
+    with app.app_context():
+        # Check if user is already blocked
+        if is_user_blocked(user_id):
+            return False, "User is already blocked"
+        
+        # Don't allow blocking owners
+        if is_owner(user_id):
+            return False, "Cannot block bot owners"
+        
+        # Add to blocked users
+        blocked_user = BlockedUser()
+        blocked_user.user_id = user_id
+        blocked_user.reason = reason
+        blocked_user.blocked_by = blocked_by or OWNER_ID
+        
+        db.session.add(blocked_user)
+        db.session.commit()
+        
+        logger.info(f"User {user_id} blocked by {blocked_by} for reason: {reason}")
+        return True, "User blocked successfully"
+
+def unblock_user(user_id):
+    """Unblock a user by user_id"""
+    with app.app_context():
+        blocked_user = BlockedUser.query.filter_by(user_id=user_id).first()
+        
+        if not blocked_user:
+            return False, "User is not blocked"
+        
+        db.session.delete(blocked_user)
+        db.session.commit()
+        
+        logger.info(f"User {user_id} unblocked")
+        return True, "User unblocked successfully"
+
+def get_blocked_users():
+    """Get list of all blocked users with details"""
+    with app.app_context():
+        blocked_users_query = db.session.query(
+            BlockedUser.user_id, 
+            BlockedUser.blocked_date, 
+            BlockedUser.reason, 
+            BlockedUser.blocked_by,
+            User.first_name,
+            User.username
+        ).outerjoin(User, BlockedUser.user_id == User.user_id).order_by(
+            BlockedUser.blocked_date.desc()
+        ).all()
+        
+        return [(user_id, blocked_date, reason, blocked_by, first_name, username) 
+                for user_id, blocked_date, reason, blocked_by, first_name, username in blocked_users_query]
+
+def resolve_username_to_user_id(username):
+    """Try to resolve @username to user_id from database"""
+    with app.app_context():
+        # Remove @ if present
+        clean_username = username.lstrip('@').lower()
+        
+        # Search in our user database
+        user = User.query.filter(func.lower(User.username) == clean_username).first()
+        
+        if user:
+            return user.user_id, user.first_name
+        
+        return None, None
+
+def block_user_by_username(username, reason=None, blocked_by=None):
+    """Block user by @username, resolving to user_id first"""
+    user_id, first_name = resolve_username_to_user_id(username)
+    
+    if not user_id:
+        return False, f"User @{username.lstrip('@')} not found in database"
+    
+    success, message = block_user(user_id, reason, blocked_by)
+    
+    if success:
+        return True, f"User @{username.lstrip('@')} ({first_name}) blocked successfully"
+    else:
+        return False, message
+
+def unblock_user_by_username(username):
+    """Unblock user by @username, resolving to user_id first"""
+    user_id, first_name = resolve_username_to_user_id(username)
+    
+    if not user_id:
+        return False, f"User @{username.lstrip('@')} not found in database"
+    
+    success, message = unblock_user(user_id)
+    
+    if success:
+        return True, f"User @{username.lstrip('@')} ({first_name}) unblocked successfully"
+    else:
+        return False, message
+
+def get_user_display_name(user_id):
+    """Get user's display name for blocking interface"""
+    with app.app_context():
+        user = User.query.filter_by(user_id=user_id).first()
+        if user:
+            name = user.first_name or "No name"
+            username = f"@{user.username}" if user.username else "No username"
+            return f"{name} ({username})"
+        return f"User ID: {user_id}"
+
+
 @bot.message_handler(commands=['owner_list_vips'])
 def owner_list_vips(message):
     """Handle /owner_list_vips command"""
@@ -5070,11 +5629,12 @@ Send your message in your next message. It will be delivered to all {target_name
     
     bot.send_message(chat_id, composer_text, reply_markup=markup, parse_mode='HTML')
     
-    # Store the notification session
+    # Store the notification session with timestamp
     notification_sessions[chat_id] = {
         'target_group': target_group,
         'users': users,
-        'waiting_for_message': True
+        'waiting_for_message': True,
+        'timestamp': time.time()
     }
 
 # Callback query handlers
@@ -5083,6 +5643,11 @@ Send your message in your next message. It will be delivered to all {target_name
 @safe_handler
 def handle_callback_query(call):
     """Handle inline keyboard callbacks"""
+    
+    # Check if user is blocked before processing any callback
+    if is_user_blocked(call.from_user.id):
+        bot.send_message(call.message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
     
     # Register user interaction for all callback queries
     add_or_update_user(call.from_user)
@@ -5812,10 +6377,40 @@ Add a description that VIP members will see:
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "user_management_menu":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             show_user_management_menu(call.message.chat.id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    
+    # User Blocking System callbacks
+    elif call.data == "start_block_user":
+        if is_owner(call.from_user.id):
+            start_block_user_interface(call.message.chat.id, call.from_user.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "start_unblock_user":
+        if is_owner(call.from_user.id):
+            start_unblock_user_interface(call.message.chat.id, call.from_user.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "view_blocked_users":
+        if is_owner(call.from_user.id):
+            show_blocked_users_list(call.message.chat.id)
+        else:
+            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
+    elif call.data == "skip_block_reason":
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'block_user'):
+            session = get_upload_session(call.from_user.id)
+            if session.get('step') == 'waiting_for_reason':
+                # Create fake message with None text to trigger skip
+                fake_message = type('obj', (object,), {
+                    'chat': call.message.chat,
+                    'from_user': call.from_user,
+                    'text': 'skip'
+                })
+                handle_block_reason_input(fake_message, session)
+        else:
+            bot.send_message(call.message.chat.id, "❌ No active blocking session.")
     elif call.data == "bot_config_menu":
         if call.from_user.id == OWNER_ID:
             show_bot_config_menu(call.message.chat.id)
@@ -5970,13 +6565,48 @@ Add a description that VIP members will see:
         if call.from_user.id == OWNER_ID:
             target_group = call.data.replace("confirm_send_", "")
             
-            # Get stored notification session
-            if call.message.chat.id in notification_sessions:
+            # Clean up expired sessions first
+            cleanup_expired_sessions()
+            
+            # Get stored notification session with validation
+            if is_session_valid(call.message.chat.id):
                 session = notification_sessions[call.message.chat.id]
                 message_text = session.get('message_text')
                 users = session.get('users', [])
                 
+                # Validate session data integrity
+                if not message_text:
+                    # Attempt to recover session
+                    target_group = session.get('target_group', '')
+                    if target_group and recover_session_state(call.message.chat.id, target_group):
+                        bot.send_message(call.message.chat.id, "🔄 Session recovered. Please compose your message again.")
+                        return
+                    else:
+                        bot.send_message(call.message.chat.id, "❌ Message text not found and could not recover session. Please restart from notification menu.")
+                        if call.message.chat.id in notification_sessions:
+                            del notification_sessions[call.message.chat.id]
+                        return
+                
+                if not users or len(users) == 0:
+                    # Attempt to recover session with fresh user list
+                    target_group = session.get('target_group', '')
+                    if target_group and recover_session_state(call.message.chat.id, target_group):
+                        # Preserve message text if it exists
+                        if message_text:
+                            notification_sessions[call.message.chat.id]['message_text'] = message_text
+                            notification_sessions[call.message.chat.id]['waiting_for_message'] = False
+                        bot.send_message(call.message.chat.id, "🔄 Session recovered with updated user list. You can now send your notification.")
+                        return
+                    else:
+                        bot.send_message(call.message.chat.id, "❌ No target users found and could not recover session. Please restart the notification process.")
+                        if call.message.chat.id in notification_sessions:
+                            del notification_sessions[call.message.chat.id]
+                        return
+                
                 if message_text and users:
+                    # Update session timestamp before sending
+                    update_session_timestamp(call.message.chat.id)
+                    
                     # Send the notification
                     target_names = {
                         'all': 'All Users',
@@ -6018,9 +6648,22 @@ Add a description that VIP members will see:
                     # Clear the session
                     del notification_sessions[call.message.chat.id]
                 else:
-                    bot.send_message(call.message.chat.id, "❌ Notification session expired. Please try again.")
+                    # This shouldn't happen due to validation above, but keep for safety
+                    bot.send_message(call.message.chat.id, "❌ Incomplete notification data. Please try again.")
             else:
-                bot.send_message(call.message.chat.id, "❌ No active notification session found.")
+                # Check if we can extract target group from callback data to help with recovery
+                if "_" in call.data:
+                    try:
+                        target_group = call.data.replace("confirm_send_", "")
+                        if target_group in ['all', 'vip', 'non_vip']:
+                            # Attempt to recover session
+                            if recover_session_state(call.message.chat.id, target_group):
+                                bot.send_message(call.message.chat.id, "🔄 Session recovered! Please compose your notification message now.")
+                                return
+                    except Exception as e:
+                        logger.warning(f"Failed to recover session from callback data: {e}")
+                
+                bot.send_message(call.message.chat.id, "❌ Notification session expired or not found. Please start over from the notification menu.")
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     
@@ -6035,8 +6678,14 @@ def pre_checkout_handler(pre_checkout_query):
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
 @bot.message_handler(content_types=['successful_payment'])
+@safe_handler
 def successful_payment_handler(message):
     """Handle successful payment and deliver content"""
+    # Check if user is blocked before processing payment
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
+        return
+    
     payment = message.successful_payment
     
     # Parse payload to get content info
@@ -6218,13 +6867,24 @@ Thank you for your purchase! Here's your exclusive content:
 
 # Notification message handler (must be before general text handler for priority)
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.chat.id in notification_sessions and notification_sessions[message.chat.id].get('waiting_for_message'))
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and is_session_valid(message.chat.id) and notification_sessions[message.chat.id].get('waiting_for_message'))
 def handle_notification_message_input(message):
     """Handle notification message input from owner"""
+    # Clean up expired sessions first
+    cleanup_expired_sessions()
+    
+    # Validate session exists and is valid
+    if not is_session_valid(message.chat.id):
+        bot.send_message(message.chat.id, "❌ Notification session expired. Please start over from the notification menu.")
+        return
+    
     session = notification_sessions[message.chat.id]
     target_group = session['target_group']
     users = session['users']
     notification_text = message.text
+    
+    # Update session timestamp to keep it alive
+    update_session_timestamp(message.chat.id)
     
     if len(notification_text) < 1 or len(notification_text) > 4000:
         bot.send_message(message.chat.id, "❌ Message must be between 1 and 4000 characters. Please try again:")
@@ -6259,17 +6919,24 @@ def handle_notification_message_input(message):
     
     bot.send_message(message.chat.id, preview_text, reply_markup=markup, parse_mode='HTML')
     
-    # Store the message for confirmation
+    # Store the message for confirmation and update timestamp
     notification_sessions[message.chat.id]['message_text'] = notification_text
     notification_sessions[message.chat.id]['waiting_for_message'] = False
+    notification_sessions[message.chat.id]['timestamp'] = time.time()
 
 # Natural text message handler
 
 @bot.message_handler(content_types=['text'])
+@safe_handler
 def handle_text_messages(message):
     """Handle natural text messages with AI-style responses"""
     # Skip if it's a command
     if message.text.startswith('/'):
+        return
+    
+    # Check if user is blocked before processing
+    if is_user_blocked(message.from_user.id):
+        bot.send_message(message.chat.id, "🚫 You have been blocked from using this bot. Contact the owner if you believe this is an error.")
         return
     
     add_or_update_user(message.from_user)
@@ -6606,6 +7273,32 @@ def handle_loyal_fan_reason_input(message):
         # Clear the session
         if has_upload_session(owner_id):
             clear_upload_session(owner_id)
+
+# User Blocking System Message Handlers
+
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'block_user', 'waiting_for_user_input'))
+def handle_block_user_input_message(message):
+    """Handle user input for blocking (user ID or @username)"""
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
+    if session and session.get('step') == 'waiting_for_user_input':
+        handle_block_user_input(message, session)
+
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'block_user', 'waiting_for_reason'))
+def handle_block_reason_input_message(message):
+    """Handle reason input for blocking"""
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
+    if session and session.get('step') == 'waiting_for_reason':
+        handle_block_reason_input(message, session)
+
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'unblock_user', 'waiting_for_user_input'))
+def handle_unblock_user_input_message(message):
+    """Handle user input for unblocking (user ID or @username)"""
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
+    if session and session.get('step') == 'waiting_for_user_input':
+        handle_unblock_user_input(message, session)
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
