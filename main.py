@@ -2915,6 +2915,7 @@ def handle_teaser_upload(message):
         
         if file_id and file_type:
             session['file_id'] = file_id
+            session['file_path'] = file_id  # Store file_id as file_path for consistency with add_teaser function
             session['step'] = 'waiting_for_description'
         else:
             bot.send_message(message.chat.id, "❌ Please send a photo, video, or GIF file. Supported formats: JPG, PNG, MP4, GIF, MOV, AVI.")
@@ -3007,7 +3008,7 @@ def handle_teaser_description(message):
     
     # Save teaser to database
     try:
-        add_teaser(session['file_id'], session['file_type'], description)
+        add_teaser(session['file_path'], session['file_type'], description)
         
         # Send notifications to all non-VIP users about the new free teaser
         notification_stats = notify_free_teaser_uploaded(description)
