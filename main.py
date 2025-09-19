@@ -168,7 +168,9 @@ def init_database():
         for key, value in vip_settings_data:
             existing = VipSetting.query.filter_by(key=key).first()
             if not existing:
-                setting = VipSetting(key=key, value=value)
+                setting = VipSetting()
+                setting.key = key
+                setting.value = value
                 db.session.add(setting)
         
         # Insert default AI responses
@@ -182,7 +184,9 @@ def init_database():
         for key, text in default_responses:
             existing = Response.query.filter_by(key=key).first()
             if not existing:
-                response = Response(key=key, text=text)
+                response = Response()
+                response.key = key
+                response.text = text
                 db.session.add(response)
     
         
@@ -261,14 +265,13 @@ def add_or_update_user(user):
             existing_user.first_name = user.first_name
         else:
             # Add new user
-            new_user = User(
-                user_id=user.id,
-                username=user.username,
-                first_name=user.first_name,
-                join_date=now,
-                last_interaction=now,
-                interaction_count=1
-            )
+            new_user = User()
+            new_user.user_id = user.id
+            new_user.username = user.username
+            new_user.first_name = user.first_name
+            new_user.join_date = now
+            new_user.last_interaction = now
+            new_user.interaction_count = 1
             db.session.add(new_user)
             
             # Send welcome notification to all owners
@@ -771,13 +774,12 @@ def delete_teaser(teaser_id):
 def add_teaser(file_path, file_type, description, vip_only=False):
     """Add a teaser to the database"""
     with app.app_context():
-        new_teaser = Teaser(
-            file_path=file_path,
-            file_type=file_type,
-            description=description,
-            created_date=datetime.datetime.now(),
-            vip_only=vip_only
-        )
+        new_teaser = Teaser()
+        new_teaser.file_path = file_path
+        new_teaser.file_type = file_type
+        new_teaser.description = description
+        new_teaser.created_date = datetime.datetime.now()
+        new_teaser.vip_only = vip_only
         db.session.add(new_teaser)
         db.session.commit()
 
@@ -976,7 +978,9 @@ def handle_vip_settings_input(message):
                     if setting:
                         setting.value = str(price)
                     else:
-                        setting = VipSetting(key='vip_price_stars', value=str(price))
+                        setting = VipSetting()
+                        setting.key = 'vip_price_stars'
+                        setting.value = str(price)
                         db.session.add(setting)
                     db.session.commit()
                 
@@ -1016,7 +1020,9 @@ def handle_vip_settings_input(message):
                     if setting:
                         setting.value = str(duration)
                     else:
-                        setting = VipSetting(key='vip_duration_days', value=str(duration))
+                        setting = VipSetting()
+                        setting.key = 'vip_duration_days'
+                        setting.value = str(duration)
                         db.session.add(setting)
                     db.session.commit()
                 
@@ -1064,7 +1070,9 @@ def handle_vip_settings_input(message):
                 if setting:
                     setting.value = user_input
                 else:
-                    setting = VipSetting(key='vip_description', value=user_input)
+                    setting = VipSetting()
+                    setting.key = 'vip_description'
+                    setting.value = user_input
                     db.session.add(setting)
                 db.session.commit()
             
@@ -1128,14 +1136,13 @@ def get_vip_content_list():
 def add_vip_content(name, price_stars, file_path, description):
     """Add new VIP-only content"""
     with app.app_context():
-        new_content = ContentItem(
-            name=name,
-            price_stars=price_stars,
-            file_path=file_path,
-            description=description,
-            created_date=datetime.datetime.now(),
-            content_type='vip'
-        )
+        new_content = ContentItem()
+        new_content.name = name
+        new_content.price_stars = price_stars
+        new_content.file_path = file_path
+        new_content.description = description
+        new_content.created_date = datetime.datetime.now()
+        new_content.content_type = 'vip'
         db.session.add(new_content)
         db.session.commit()
 
@@ -1215,7 +1222,9 @@ def update_vip_settings(key, value):
         if setting:
             setting.value = value
         else:
-            setting = VipSetting(key=key, value=value)
+            setting = VipSetting()
+            setting.key = key
+            setting.value = value
             db.session.add(setting)
         db.session.commit()
 
@@ -1248,13 +1257,12 @@ def activate_vip_subscription(user_id):
             # Create new subscription
             expiry_date = now + datetime.timedelta(days=duration_days)
             
-            new_subscription = VipSubscription(
-                user_id=user_id,
-                start_date=now,
-                expiry_date=expiry_date,
-                is_active=True,
-                total_payments=1
-            )
+            new_subscription = VipSubscription()
+            new_subscription.user_id = user_id
+            new_subscription.start_date = now
+            new_subscription.expiry_date = expiry_date
+            new_subscription.is_active = True
+            new_subscription.total_payments = 1
             db.session.add(new_subscription)
         
         db.session.commit()
@@ -2195,13 +2203,12 @@ def owner_add_content(message):
         
         # Save to database (with processed file_path)
         with app.app_context():
-            new_content = ContentItem(
-                name=name,
-                price_stars=price_stars,
-                file_path=processed_file_path,
-                description=description,
-                content_type='browse'
-            )
+            new_content = ContentItem()
+            new_content.name = name
+            new_content.price_stars = price_stars
+            new_content.file_path = processed_file_path
+            new_content.description = description
+            new_content.content_type = 'browse'
             db.session.add(new_content)
             db.session.commit()
         
@@ -2540,13 +2547,12 @@ def save_uploaded_content(session):
                     raise Exception(f"Content name '{session['name']}' already exists. Please choose a different name.")
                 
                 # Create new content
-                new_content = ContentItem(
-                    name=session['name'],
-                    price_stars=session['price'],
-                    file_path=processed_file_path,
-                    description=session['description'],
-                    content_type=content_type
-                )
+                new_content = ContentItem()
+                new_content.name = session['name']
+                new_content.price_stars = session['price']
+                new_content.file_path = processed_file_path
+                new_content.description = session['description']
+                new_content.content_type = content_type
                 db.session.add(new_content)
                 db.session.commit()
                 logger.info(f"Content '{session['name']}' saved successfully")
@@ -3306,7 +3312,9 @@ def owner_set_response(message):
         if response:
             response.text = text
         else:
-            response = Response(key=key, text=text)
+            response = Response()
+            response.key = key
+            response.text = text
             db.session.add(response)
         db.session.commit()
     
@@ -5965,12 +5973,11 @@ Use the buttons below to explore your new VIP privileges:
             # Record the purchase for permanent access (check for duplicates)
             existing_purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
             if not existing_purchase:
-                purchase = UserPurchase(
-                    user_id=user_id,
-                    content_name=content_name,
-                    purchase_date=datetime.datetime.now(),
-                    price_paid=payment.total_amount
-                )
+                purchase = UserPurchase()
+                purchase.user_id = user_id
+                purchase.content_name = content_name
+                purchase.purchase_date = datetime.datetime.now()
+                purchase.price_paid = payment.total_amount
                 db.session.add(purchase)
             
             # Get content details
@@ -6410,7 +6417,10 @@ def handle_loyal_fan_reason_input(message):
                     existing_loyal_fan.reason = reason
                     existing_loyal_fan.date_marked = now
                 else:
-                    new_loyal_fan = LoyalFan(user_id=user_id, reason=reason, date_marked=now)
+                    new_loyal_fan = LoyalFan()
+                    new_loyal_fan.user_id = user_id
+                    new_loyal_fan.reason = reason
+                    new_loyal_fan.date_marked = now
                     db.session.add(new_loyal_fan)
                 
                 db.session.commit()
