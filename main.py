@@ -2477,7 +2477,7 @@ Or type skip to use a default description.
         except ValueError:
             bot.send_message(message.chat.id, "❌ Invalid price! Enter just the number (e.g., 25)")
     
-    elif session['step'] == 'waiting_for_description':
+    elif session['step'] == 'waiting_for_description' and session.get('type') != 'teaser':
         description = message.text.strip()
         if description.lower() == 'skip':
             description = f"Exclusive {session.get('file_type', 'content').lower()} content"
@@ -5090,7 +5090,7 @@ def handle_callback_query(call):
                     # This should use the teaser-specific handler
                     session['description'] = "Exclusive teaser content"
                     try:
-                        add_teaser(session['file_id'], session['file_type'], session['description'])
+                        add_teaser(session['file_path'], session['file_type'], session['description'])
                         
                         success_text = f"""
 🎉 <b>FREE TEASER UPLOADED SUCCESSFULLY!</b> 🎉
@@ -5159,7 +5159,7 @@ def handle_callback_query(call):
                 session['description'] = "Exclusive teaser content"
                 # Save teaser to database
                 try:
-                    add_teaser(session['file_id'], session['file_type'], session['description'])
+                    add_teaser(session['file_path'], session['file_type'], session['description'])
                     
                     success_text = f"""
 🎉 **TEASER UPLOADED SUCCESSFULLY!** 🎉
