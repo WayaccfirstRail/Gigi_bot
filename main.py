@@ -5432,6 +5432,7 @@ Add a description that VIP members will see:
                 success_text = f"""
 🎉 <b>VIP TEASER UPLOADED SUCCESSFULLY!</b> 🎉
 
+🏷️ <b>Name:</b> {session.get('teaser_title', 'Unnamed VIP Teaser')}
 🎬 <b>Type:</b> {session['file_type'].title()}
 📝 <b>Description:</b> {description}
 
