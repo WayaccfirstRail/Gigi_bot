@@ -1160,48 +1160,42 @@ def get_vip_content_by_name(name):
 
 def check_vip_status(user_id):
     """Check if user has active VIP subscription"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT start_date, expiry_date, is_active 
-        FROM vip_subscriptions 
-        WHERE user_id = ? AND is_active = 1
-    ''', (user_id,))
-    
-    subscription = cursor.fetchone()
-    conn.close()
-    
-    if not subscription:
-        return {'is_vip': False, 'days_left': 0, 'expired': False}
-    
-    start_date, expiry_date, is_active = subscription
-    
-    # Parse expiry date
-    try:
-        expiry_datetime = datetime.datetime.fromisoformat(expiry_date)
+    with app.app_context():
+        subscription = VipSubscription.query.filter_by(
+            user_id=user_id, 
+            is_active=True
+        ).first()
+        
+        if not subscription:
+            return {'is_vip': False, 'days_left': 0, 'expired': False}
+        
+        # Check if subscription is still valid
         now = datetime.datetime.now()
         
-        if expiry_datetime > now:
-            days_left = (expiry_datetime - now).days
+        if subscription.expiry_date > now:
+            days_left = (subscription.expiry_date - now).days
             return {'is_vip': True, 'days_left': days_left, 'expired': False}
         else:
             # Subscription expired, deactivate it
             deactivate_expired_vip(user_id)
             return {'is_vip': False, 'days_left': 0, 'expired': True}
-    except:
-        return {'is_vip': False, 'days_left': 0, 'expired': False}
 
 def deactivate_expired_vip(user_id):
     """Deactivate expired VIP subscription"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('UPDATE vip_subscriptions SET is_active = 0 WHERE user_id = ?', (user_id,))
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        subscription = VipSubscription.query.filter_by(user_id=user_id).first()
+        if subscription:
+            subscription.is_active = False
+            db.session.commit()
 
 def get_vip_settings(key):
     """Get VIP setting value"""
+    with app.app_context():
+        setting = VipSetting.query.filter_by(key=key).first()
+        return setting.value if setting else None
+
+def get_vip_settings_original(key):
+    """Original get VIP setting value function - deprecated"""
     conn = sqlite3.connect('content_bot.db')
     cursor = conn.cursor()
     cursor.execute('SELECT value FROM vip_settings WHERE key = ?', (key,))
