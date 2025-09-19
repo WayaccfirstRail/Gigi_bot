@@ -971,12 +971,14 @@ def handle_vip_settings_input(message):
                     return
                 
                 # Update VIP price setting
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('INSERT OR REPLACE INTO vip_settings (key, value) VALUES (?, ?)', 
-                             ('vip_price_stars', str(price)))
-                conn.commit()
-                conn.close()
+                with app.app_context():
+                    setting = VipSetting.query.filter_by(key='vip_price_stars').first()
+                    if setting:
+                        setting.value = str(price)
+                    else:
+                        setting = VipSetting(key='vip_price_stars', value=str(price))
+                        db.session.add(setting)
+                    db.session.commit()
                 
                 # Clear session
                 del upload_sessions[OWNERS[0]]
@@ -1009,12 +1011,14 @@ def handle_vip_settings_input(message):
                     return
                 
                 # Update VIP duration setting
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('INSERT OR REPLACE INTO vip_settings (key, value) VALUES (?, ?)', 
-                             ('vip_duration_days', str(duration)))
-                conn.commit()
-                conn.close()
+                with app.app_context():
+                    setting = VipSetting.query.filter_by(key='vip_duration_days').first()
+                    if setting:
+                        setting.value = str(duration)
+                    else:
+                        setting = VipSetting(key='vip_duration_days', value=str(duration))
+                        db.session.add(setting)
+                    db.session.commit()
                 
                 # Clear session
                 del upload_sessions[OWNERS[0]]
@@ -1055,12 +1059,14 @@ def handle_vip_settings_input(message):
                 return
             
             # Update VIP description setting
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('INSERT OR REPLACE INTO vip_settings (key, value) VALUES (?, ?)', 
-                         ('vip_description', user_input))
-            conn.commit()
-            conn.close()
+            with app.app_context():
+                setting = VipSetting.query.filter_by(key='vip_description').first()
+                if setting:
+                    setting.value = user_input
+                else:
+                    setting = VipSetting(key='vip_description', value=user_input)
+                    db.session.add(setting)
+                db.session.commit()
             
             # Clear session
             del upload_sessions[OWNERS[0]]
@@ -2045,15 +2051,15 @@ This exclusive content is only available to VIP members. Upgrade now to unlock:
         
         for content_item in vip_content:
             # Escape HTML special characters to prevent parsing errors
-            safe_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            safe_description = description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            safe_name = content_item.name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            safe_description = content_item.description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             
             catalog_text += f"💎 <b>{safe_name}</b>\n"
             catalog_text += f"🆓 <b>VIP FREE ACCESS</b>\n"
             catalog_text += f"📝 {safe_description}\n\n"
             
             # Add free access button for VIP content
-            markup.add(types.InlineKeyboardButton(f"💎 Access {name} (VIP FREE)", callback_data=f"vip_get_{name}"))
+            markup.add(types.InlineKeyboardButton(f"💎 Access {content_item.name} (VIP FREE)", callback_data=f"vip_get_{content_item.name}"))
         
         # Add navigation buttons
         markup.add(types.InlineKeyboardButton("🛒 Browse Regular Content", callback_data="browse_content"))
@@ -2675,13 +2681,14 @@ def handle_vip_file_update_upload(message):
         content_name = session['content_name']
         
         # Update the VIP content file path directly
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE content_items SET file_path = ? WHERE name = ? AND content_type = ?', 
-                      (file_id, content_name, 'vip'))
-        updated_count = cursor.rowcount
-        conn.commit()
-        conn.close()
+        with app.app_context():
+            content_item = ContentItem.query.filter_by(name=content_name, content_type='vip').first()
+            if content_item:
+                content_item.file_path = file_id
+                db.session.commit()
+                updated_count = 1
+            else:
+                updated_count = 0
         
         # Clear upload session
         del upload_sessions[OWNERS[0]]
@@ -5846,24 +5853,29 @@ Use the buttons below to explore your new VIP privileges:
         content_name = payload_parts[1]
         user_id = int(payload_parts[2])
         
-        # Update user's total spent
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET total_stars_spent = total_stars_spent + ? WHERE user_id = ?', 
-                      (payment.total_amount, user_id))
-        
-        # Record the purchase for permanent access (use INSERT OR IGNORE to prevent duplicates)
-        purchase_date = datetime.datetime.now().isoformat()
-        cursor.execute('''
-            INSERT OR IGNORE INTO user_purchases (user_id, content_name, purchase_date, price_paid)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, content_name, purchase_date, payment.total_amount))
-        
-        # Get content details
-        cursor.execute('SELECT file_path, description FROM content_items WHERE name = ?', (content_name,))
-        content = cursor.fetchone()
-        conn.commit()
-        conn.close()
+        # Update user's total spent and record purchase
+        with app.app_context():
+            # Update user's total spent
+            user = User.query.filter_by(user_id=user_id).first()
+            if user:
+                user.total_stars_spent = (user.total_stars_spent or 0) + payment.total_amount
+            
+            # Record the purchase for permanent access (check for duplicates)
+            existing_purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
+            if not existing_purchase:
+                purchase = UserPurchase(
+                    user_id=user_id,
+                    content_name=content_name,
+                    purchase_date=datetime.datetime.now(),
+                    price_paid=payment.total_amount
+                )
+                db.session.add(purchase)
+            
+            # Get content details
+            content_item = ContentItem.query.filter_by(name=content_name).first()
+            db.session.commit()
+            
+            content = (content_item.file_path, content_item.description) if content_item else None
         
         if content:
             file_path, description = content
@@ -6069,11 +6081,9 @@ def preview_content(content_name):
     
     try:
         # Get content details from database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT file_path, description, content_type FROM content_items WHERE name = ?', (content_name,))
-        content = cursor.fetchone()
-        conn.close()
+        with app.app_context():
+            content_item = ContentItem.query.filter_by(name=content_name).first()
+            content = (content_item.file_path, content_item.description, content_item.content_type) if content_item else None
         
         if not content:
             abort(404, f"Content '{content_name}' not found")
