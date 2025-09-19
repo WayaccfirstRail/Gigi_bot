@@ -888,11 +888,8 @@ def handle_vip_name_input(message):
         return
     
     # Check if name already exists
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT name FROM content_items WHERE name = ?', (name,))
-    existing = cursor.fetchone()
-    conn.close()
+    with app.app_context():
+        existing = ContentItem.query.filter_by(name=name).first()
     
     if existing:
         bot.send_message(message.chat.id, f"❌ Content with name '{name}' already exists! Choose a different name.")
@@ -1204,14 +1201,6 @@ def get_vip_settings(key):
         setting = VipSetting.query.filter_by(key=key).first()
         return setting.value if setting else None
 
-def get_vip_settings_original(key):
-    """Original get VIP setting value function - deprecated"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT value FROM vip_settings WHERE key = ?', (key,))
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
 
 def update_vip_settings(key, value):
     """Update VIP setting"""
@@ -2143,11 +2132,8 @@ def owner_add_content(message):
         description = parts[4] if len(parts) > 4 else "Exclusive content"
         
         # Check if this name already exists
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM content_items WHERE name = ?', (name,))
-        existing = cursor.fetchone()
-        conn.close()
+        with app.app_context():
+            existing = ContentItem.query.filter_by(name=name).first()
         
         if existing:
             bot.send_message(message.chat.id, f"❌ Content with name '{name}' already exists! Choose a different name or use a different command to update it.")
@@ -2173,14 +2159,16 @@ def owner_add_content(message):
                 return
         
         # Save to database (with processed file_path)
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO content_items (name, price_stars, file_path, description, created_date, content_type)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (name, price_stars, processed_file_path, description, datetime.datetime.now().isoformat(), 'browse'))
-        conn.commit()
-        conn.close()
+        with app.app_context():
+            new_content = ContentItem(
+                name=name,
+                price_stars=price_stars,
+                file_path=processed_file_path,
+                description=description,
+                content_type='browse'
+            )
+            db.session.add(new_content)
+            db.session.commit()
         
         # Success message with details
         success_message = f"""✅ **CONTENT ADDED SUCCESSFULLY!** ✅
@@ -2386,11 +2374,8 @@ def handle_upload_flow(message):
             return
         
         # Check if name already exists
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT name FROM content_items WHERE name = ?', (name,))
-        existing = cursor.fetchone()
-        conn.close()
+        with app.app_context():
+            existing = ContentItem.query.filter_by(name=name).first()
         
         if existing:
             bot.send_message(message.chat.id, f"❌ Content with name '{name}' already exists! Choose a different name.")
@@ -2509,15 +2494,16 @@ def save_uploaded_content(session):
                 return
         
         # Save to database (with processed file_path)
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            INSERT INTO content_items (name, price_stars, file_path, description, created_date, content_type)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (session['name'], session['price'], processed_file_path, session['description'], datetime.datetime.now().isoformat(), content_type))
-        conn.commit()
-        conn.close()
+        with app.app_context():
+            new_content = ContentItem(
+                name=session['name'],
+                price_stars=session['price'],
+                file_path=processed_file_path,
+                description=session['description'],
+                content_type=content_type
+            )
+            db.session.add(new_content)
+            db.session.commit()
         
         # Success message
         if content_type == 'vip':
@@ -2766,15 +2752,12 @@ def handle_vip_teaser_edit_upload(message):
     if file_id and file_type:
         # Update the teaser in database
         try:
-            conn = sqlite3.connect('content_bot.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE teasers 
-                SET file_path = ?, file_type = ? 
-                WHERE id = ? AND vip_only = 1
-            ''', (file_id, file_type, session['teaser_id']))
-            conn.commit()
-            conn.close()
+            with app.app_context():
+                teaser = Teaser.query.filter_by(id=session['teaser_id'], vip_only=True).first()
+                if teaser:
+                    teaser.file_path = file_id
+                    teaser.file_type = file_type
+                    db.session.commit()
             
             success_text = f"""
 ✅ <b>VIP TEASER UPDATED SUCCESSFULLY!</b> ✅
