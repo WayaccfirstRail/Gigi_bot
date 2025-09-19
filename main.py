@@ -3086,7 +3086,7 @@ def owner_list_users(message):
         paying_customers = db.session.query(
             User.user_id, User.username, User.first_name, User.total_stars_spent, 
             User.interaction_count, 
-            case([(LoyalFan.user_id != None, 'Yes')], else_='No').label('is_loyal')
+            case((LoyalFan.user_id.is_not(None), 'Yes'), else_='No').label('is_loyal')
         ).outerjoin(LoyalFan, User.user_id == LoyalFan.user_id).filter(
             User.total_stars_spent > 0,
             User.user_id != bot_id
@@ -3101,7 +3101,10 @@ def owner_list_users(message):
             User.user_id != bot_id
         ).first()
         
-        total_paying_customers, total_revenue = stats[0] or 0, stats[1] or 0
+        if stats and len(stats) >= 2:
+            total_paying_customers, total_revenue = stats[0] or 0, stats[1] or 0
+        else:
+            total_paying_customers, total_revenue = 0, 0
     
     if paying_customers:
         user_text = "💰 <b>PAYING CUSTOMERS</b> 💰\n\n"
@@ -3151,7 +3154,10 @@ def owner_analytics(message):
             User.user_id != bot_id
         ).first()
         
-        paying_customers, total_revenue, paying_interactions = paying_stats[0] or 0, paying_stats[1] or 0, paying_stats[2] or 0
+        if paying_stats and len(paying_stats) >= 3:
+            paying_customers, total_revenue, paying_interactions = paying_stats[0] or 0, paying_stats[1] or 0, paying_stats[2] or 0
+        else:
+            paying_customers, total_revenue, paying_interactions = 0, 0, 0
         
         # Get all users statistics
         all_stats = db.session.query(
@@ -3159,7 +3165,10 @@ def owner_analytics(message):
             func.sum(User.interaction_count)
         ).filter(User.user_id != bot_id).first()
         
-        total_users, total_interactions = all_stats[0] or 0, all_stats[1] or 0
+        if all_stats and len(all_stats) >= 2:
+            total_users, total_interactions = all_stats[0] or 0, all_stats[1] or 0
+        else:
+            total_users, total_interactions = 0, 0
         
         # Get top spenders
         top_spenders = User.query.filter(
