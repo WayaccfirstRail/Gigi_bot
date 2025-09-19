@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Telegram Bot Web Server"
+args = "Flask Web Server"
 
 [[workflows.workflow]]
-name = "Telegram Bot Web Server"
+name = "Flask Web Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
