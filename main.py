@@ -1,10 +1,11 @@
 import os
-import sqlite3
 import threading
 import datetime
 import telebot
 from telebot import types
-from flask import Flask
+from flask import render_template_string
+from app import app, db
+from models import *
 import logging
 import socket
 import ipaddress
@@ -16,10 +17,6 @@ import mimetypes
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Initialize Flask app for Replit hosting
-app = Flask(__name__)
-app.secret_key = os.environ.get('SESSION_SECRET')
 
 # Bot token and owner IDs from environment variables
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -101,180 +98,48 @@ notification_sessions = {}
 
 # Database setup
 def init_database():
-    """Initialize SQLite database with required tables"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
+    """Initialize PostgreSQL database with required tables and default data"""
+    with app.app_context():
+        # Tables are already created by models.py, now add default data
     
-    # Users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            join_date TEXT,
-            total_stars_spent INTEGER DEFAULT 0,
-            interaction_count INTEGER DEFAULT 0,
-            last_interaction TEXT
-        )
-    ''')
+        # Insert default VIP settings
+        vip_settings_data = [
+            ('vip_price_stars', '399'),
+            ('vip_duration_days', '30'),
+            ('vip_description', 'Premium VIP access with exclusive content and direct chat')
+        ]
+        
+        for key, value in vip_settings_data:
+            existing = VipSetting.query.filter_by(key=key).first()
+            if not existing:
+                setting = VipSetting(key=key, value=value)
+                db.session.add(setting)
+        
+        # Insert default AI responses
+        default_responses = [
+            ('greeting', 'Hey there! 😊 Thanks for reaching out! I love connecting with you baby. What\'s on your mind?'),
+            ('question', 'That\'s a great question! I appreciate you asking. Feel free to check out my content or ask me anything else! 💕'),
+            ('compliment', 'Aww, you\'re so sweet! Thank you! That really makes my day. You\'re amazing! ✨'),
+            ('default', 'Thanks for the message! I love hearing from you. Don\'t forget to check out my exclusive content! 😘')
+        ]
+        
+        for key, text in default_responses:
+            existing = Response.query.filter_by(key=key).first()
+            if not existing:
+                response = Response(key=key, text=text)
+                db.session.add(response)
     
-    # Loyal fans table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS loyal_fans (
-            user_id INTEGER PRIMARY KEY,
-            reason TEXT,
-            date_marked TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    
-    # AI-style responses table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS responses (
-            key TEXT PRIMARY KEY,
-            text TEXT
-        )
-    ''')
-    
-    # Content items table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS content_items (
-            name TEXT PRIMARY KEY,
-            price_stars INTEGER,
-            file_path TEXT,
-            description TEXT,
-            created_date TEXT,
-            content_type TEXT DEFAULT 'browse'
-        )
-    ''')
-    
-    # Add content_type column to existing content_items table if it doesn't exist
-    # This provides backward compatibility for existing databases
-    try:
-        cursor.execute("ALTER TABLE content_items ADD COLUMN content_type TEXT DEFAULT 'browse'")
-        logger.info("Added content_type column to existing content_items table")
-    except sqlite3.OperationalError:
-        # Column already exists, which is fine
-        pass
-    
-    # User purchases table - tracks individual content purchases for permanent access
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS user_purchases (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            content_name TEXT,
-            purchase_date TEXT,
-            price_paid INTEGER,
-            UNIQUE (user_id, content_name),
-            FOREIGN KEY (user_id) REFERENCES users (user_id),
-            FOREIGN KEY (content_name) REFERENCES content_items (name)
-        )
-    ''')
-    
-    # Scheduled posts table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS scheduled_posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            datetime TEXT,
-            content TEXT,
-            created_date TEXT
-        )
-    ''')
-    
-    # User backup table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS user_backups (
-            user_id INTEGER,
-            username TEXT,
-            first_name TEXT,
-            join_date TEXT,
-            total_stars_spent INTEGER,
-            interaction_count INTEGER,
-            last_interaction TEXT,
-            backup_date TEXT
-        )
-    ''')
-    
-    # VIP subscriptions table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vip_subscriptions (
-            user_id INTEGER PRIMARY KEY,
-            start_date TEXT,
-            expiry_date TEXT,
-            is_active INTEGER DEFAULT 1,
-            total_payments INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    
-    # VIP settings table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS vip_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    ''')
-    
-    # Teasers table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS teasers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT,
-            file_type TEXT,
-            description TEXT,
-            created_date TEXT,
-            vip_only INTEGER DEFAULT 0
-        )
-    ''')
-    
-    # Add vip_only column to existing teasers table if it doesn't exist
-    try:
-        cursor.execute("ALTER TABLE teasers ADD COLUMN vip_only INTEGER DEFAULT 0")
-        logger.info("Added vip_only column to existing teasers table")
-    except sqlite3.OperationalError:
-        # Column already exists, which is fine
-        pass
-    
-    # Insert default VIP settings
-    vip_settings = [
-        ('vip_price_stars', '399'),
-        ('vip_duration_days', '30'),
-        ('vip_description', 'Premium VIP access with exclusive content and direct chat')
-    ]
-    
-    for key, value in vip_settings:
-        cursor.execute('INSERT OR IGNORE INTO vip_settings (key, value) VALUES (?, ?)', (key, value))
-    
-    # Insert default AI responses
-    default_responses = [
-        ('greeting', 'Hey there! 😊 Thanks for reaching out! I love connecting with you baby. What\'s on your mind?'),
-        ('question', 'That\'s a great question! I appreciate you asking. Feel free to check out my content or ask me anything else! 💕'),
-        ('compliment', 'Aww, you\'re so sweet! Thank you! That really makes my day. You\'re amazing! ✨'),
-        ('default', 'Thanks for the message! I love hearing from you. Don\'t forget to check out my exclusive content! 😘')
-    ]
-    
-    for key, text in default_responses:
-        cursor.execute('INSERT OR IGNORE INTO responses (key, text) VALUES (?, ?)', (key, text))
-    
-    
-    conn.commit()
-    conn.close()
-    logger.info("Database initialized successfully")
+        
+        db.session.commit()
+        logger.info("Database initialized successfully")
 
 def get_db_connection():
-    """Get SQLite database connection with proper settings"""
-    conn = sqlite3.connect('content_bot.db')
-    conn.execute('PRAGMA foreign_keys = ON')  # Enable foreign key constraints
-    return conn
+    """Get database session - compatibility wrapper for SQLAlchemy"""
+    return db.session
 
 def get_user_data(user_id):
     """Get user data from database"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    return User.query.filter_by(user_id=user_id).first()
 
 def add_or_update_user(user):
     """Add new user or update existing user data"""
