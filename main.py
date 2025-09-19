@@ -806,15 +806,33 @@ def delete_teaser(teaser_id):
 
 def add_teaser(file_path, file_type, description, vip_only=False):
     """Add a teaser to the database"""
-    with app.app_context():
-        new_teaser = Teaser()
-        new_teaser.file_path = file_path
-        new_teaser.file_type = file_type
-        new_teaser.description = description
-        new_teaser.created_date = datetime.datetime.now()
-        new_teaser.vip_only = vip_only
-        db.session.add(new_teaser)
-        db.session.commit()
+    try:
+        with app.app_context():
+            logger.info(f"Creating teaser object: file_path={file_path}, file_type={file_type}, vip_only={vip_only}")
+            new_teaser = Teaser()
+            new_teaser.file_path = file_path
+            new_teaser.file_type = file_type
+            new_teaser.description = description
+            new_teaser.created_date = datetime.datetime.now()
+            new_teaser.vip_only = vip_only
+            
+            logger.info("Adding teaser to database session...")
+            db.session.add(new_teaser)
+            
+            logger.info("Committing teaser to database...")
+            db.session.commit()
+            
+            logger.info(f"Teaser saved successfully with ID: {new_teaser.id}")
+            
+    except Exception as e:
+        logger.error(f"Error in add_teaser function: {e}")
+        logger.error(f"Failed teaser data: file_path={file_path}, file_type={file_type}, description={description[:100] if description else 'None'}, vip_only={vip_only}")
+        # Rollback on error
+        try:
+            db.session.rollback()
+        except:
+            pass
+        raise e
 
 def start_vip_upload_session(chat_id, user_id):
     """Start guided VIP content upload session"""
@@ -2512,9 +2530,9 @@ This name will be used internally to identify the content.
         
         bot.send_message(message.chat.id, name_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id))
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id) and get_upload_session(message.from_user.id).get('type') != 'teaser')
 def handle_upload_flow(message):
-    """Handle the guided upload flow steps"""
+    """Handle the guided upload flow steps (excludes teaser sessions)"""
     owner_id = message.from_user.id
     session = get_upload_session(owner_id)
     if not session:
@@ -3119,7 +3137,9 @@ def handle_teaser_description(message):
     
     # Save teaser to database
     try:
+        logger.info(f"Attempting to save teaser: file_path={session['file_path']}, file_type={session['file_type']}, description={description[:50]}...")
         add_teaser(session['file_path'], session['file_type'], description)
+        logger.info("Teaser saved successfully to database")
         
         # Send notifications to all non-VIP users about the new free teaser
         notification_stats = notify_free_teaser_uploaded(description)
@@ -3147,6 +3167,8 @@ def handle_teaser_description(message):
         bot.send_message(owner_id, success_text, reply_markup=markup, parse_mode='HTML')
         
     except Exception as e:
+        logger.error(f"Error saving teaser: {e}")
+        logger.error(f"Teaser details: file_path={session.get('file_path')}, file_type={session.get('file_type')}, description={description}")
         bot.send_message(owner_id, f"❌ Error saving teaser: {str(e)}")
     
     # Clear upload session
