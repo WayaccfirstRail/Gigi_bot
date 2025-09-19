@@ -1,4 +1,4 @@
-modules = ["python-3.11", "postgresql-16"]
+modules = ["python-3.11"]
 [agent]
 expertMode = true
 
@@ -39,5 +39,5 @@ localPort = 42827
 externalPort = 3000
 
 [deployment]
-deploymentTarget = "vm"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--reuse-port", "main:app"]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
