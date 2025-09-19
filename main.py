@@ -5179,7 +5179,7 @@ def handle_callback_query(call):
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "start_teaser_upload":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             # Create a fake message object for the teaser upload function
             fake_message = type('obj', (object,), {
                 'chat': call.message.chat,
@@ -5190,14 +5190,15 @@ def handle_callback_query(call):
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_teaser_upload":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            del upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'teaser'):
+            clear_upload_session(call.from_user.id)
             bot.send_message(call.message.chat.id, "❌ Teaser upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active teaser upload session.")
     elif call.data == "skip_teaser_description":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser':
-            session = upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'teaser'):
+            owner_id = call.from_user.id
+            session = get_upload_session(owner_id)
             if session['step'] == 'waiting_for_description':
                 session['description'] = "Exclusive teaser content"
                 # Save teaser to database
@@ -5222,19 +5223,19 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
                     bot.send_message(call.message.chat.id, success_text, reply_markup=markup)
                     
                     # Clear upload session
-                    del upload_sessions[OWNER_ID]
+                    clear_upload_session(owner_id)
                     
                 except Exception as e:
                     bot.send_message(call.message.chat.id, f"❌ Error saving teaser: {str(e)}")
-                    if OWNER_ID in upload_sessions:
-                        del upload_sessions[OWNER_ID]
+                    if has_upload_session(owner_id):
+                        clear_upload_session(owner_id)
             else:
                 bot.send_message(call.message.chat.id, "❌ Invalid step for skipping description.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active teaser upload session.")
     # VIP Management callbacks
     elif call.data == "cmd_vip":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             # Create fake message object for the vip_command function
             fake_message = type('obj', (object,), {
                 'chat': call.message.chat,
@@ -5245,7 +5246,7 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "owner_list_vips":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             # Create fake message object for the owner_list_vips function
             fake_message = type('obj', (object,), {
                 'chat': call.message.chat,
@@ -5256,24 +5257,25 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "vip_add_content":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             show_vip_add_content_interface(call.message.chat.id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "start_vip_upload":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             start_vip_upload_session(call.message.chat.id, call.from_user.id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "cancel_vip_upload":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            del upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'vip_content'):
+            clear_upload_session(call.from_user.id)
             bot.send_message(call.message.chat.id, "❌ VIP upload cancelled.")
         else:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "use_suggested_name":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'vip_content'):
+            owner_id = call.from_user.id
+            session = get_upload_session(owner_id)
             if session['step'] == 'waiting_for_name' and 'suggested_name' in session:
                 # Check if suggested name is unique
                 suggested_name = session['suggested_name']
@@ -5314,8 +5316,9 @@ Add a description that VIP members will see:
         else:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "skip_vip_description":
-        if call.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content':
-            session = upload_sessions[OWNER_ID]
+        if is_owner(call.from_user.id) and has_upload_session(call.from_user.id, 'vip_content'):
+            owner_id = call.from_user.id
+            session = get_upload_session(owner_id)
             if session['step'] == 'waiting_for_description':
                 session['description'] = f"Exclusive VIP {session.get('file_type', 'content').lower()}"
                 session['price'] = 0  # VIP content is free for VIP members
@@ -5325,25 +5328,26 @@ Add a description that VIP members will see:
         else:
             bot.send_message(call.message.chat.id, "❌ No active VIP upload session.")
     elif call.data == "vip_manage_content":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             show_vip_content_management(call.message.chat.id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     elif call.data == "vip_settings":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             show_vip_settings_interface(call.message.chat.id)
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     
     # Interactive VIP Settings Handlers
     elif call.data == "vip_set_price_btn":
-        if call.from_user.id == OWNER_ID:
+        if is_owner(call.from_user.id):
             # Start VIP price setting session
-            upload_sessions[OWNER_ID] = {
+            owner_id = call.from_user.id
+            start_upload_session(owner_id, {
                 'type': 'vip_settings',
                 'setting': 'price',
                 'step': 'waiting_for_input'
-            }
+            })
             
             price_text = """
 💰 <b>SET VIP SUBSCRIPTION PRICE</b> 💰
@@ -6433,12 +6437,14 @@ def serve_content_file(file_path, content_name="Content", description=""):
 
 # Message handlers for special interactive flows
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'loyal_fan_reason')
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'loyal_fan_reason', 'waiting_for_reason'))
 def handle_loyal_fan_reason_input(message):
     """Handle loyal fan reason input from owner"""
-    if upload_sessions[OWNER_ID].get('step') == 'waiting_for_reason':
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
+    if session.get('step') == 'waiting_for_reason':
         reason = message.text.strip()
-        user_id = upload_sessions[OWNER_ID].get('user_id')
+        user_id = session.get('user_id')
         
         if len(reason) < 3 or len(reason) > 200:
             bot.send_message(message.chat.id, "❌ Reason must be between 3 and 200 characters. Please try again:")
@@ -6493,8 +6499,8 @@ def handle_loyal_fan_reason_input(message):
                 bot.send_message(message.chat.id, "❌ User not found in database.")
         
         # Clear the session
-        if OWNER_ID in upload_sessions:
-            del upload_sessions[OWNER_ID]
+        if has_upload_session(owner_id):
+            clear_upload_session(owner_id)
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
