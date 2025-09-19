@@ -2528,17 +2528,41 @@ def save_uploaded_content(session):
                     del upload_sessions[OWNERS[0]]
                 return
         
-        # Save to database (with processed file_path)
+        # Save to database (with processed file_path) - Enhanced error handling
         with app.app_context():
-            new_content = ContentItem(
-                name=session['name'],
-                price_stars=session['price'],
-                file_path=processed_file_path,
-                description=session['description'],
-                content_type=content_type
-            )
-            db.session.add(new_content)
-            db.session.commit()
+            try:
+                logger.info(f"Attempting to save content: {session['name']} (type: {content_type})")
+                
+                # Check if content already exists to prevent accidental overwrites
+                existing = ContentItem.query.filter_by(name=session['name']).first()
+                if existing:
+                    logger.error(f"Content with name '{session['name']}' already exists")
+                    raise Exception(f"Content name '{session['name']}' already exists. Please choose a different name.")
+                
+                # Create new content
+                new_content = ContentItem(
+                    name=session['name'],
+                    price_stars=session['price'],
+                    file_path=processed_file_path,
+                    description=session['description'],
+                    content_type=content_type
+                )
+                db.session.add(new_content)
+                db.session.commit()
+                logger.info(f"Content '{session['name']}' saved successfully")
+                
+                # Verify the save by querying back
+                verification = ContentItem.query.filter_by(name=session['name']).first()
+                if verification:
+                    logger.info(f"Content save verified: {verification.name} exists in database")
+                else:
+                    logger.error(f"Content save FAILED: {session['name']} not found after commit")
+                    raise Exception("Content was not saved to database - verification failed")
+                    
+            except Exception as db_error:
+                logger.error(f"Database error saving content '{session['name']}': {str(db_error)}")
+                db.session.rollback()
+                raise Exception(f"Database save failed: {str(db_error)}")
         
         # Success message
         if content_type == 'vip':
@@ -4344,16 +4368,15 @@ def show_vip_content_edit_interface(chat_id, content_name):
 
 <b>Current Details:</b>
 • Name: {name}
-• Price: {price} Stars  
+• Access: FREE for VIP Members 💎
 • Description: {description}
 • File: {file_display}
 
 🔧 <b>Quick Edit Commands:</b>
-• <code>/owner_edit_vip_price {name} [new_price]</code>
 • <code>/owner_edit_vip_description {name} [new_description]</code>
 • <code>/owner_edit_vip_file {name} [new_file_path]</code>
 
-💡 <b>Note:</b> Changes take effect immediately for new VIP subscribers.
+💡 <b>Note:</b> VIP content is automatically FREE for all VIP subscribers. Changes take effect immediately.
 """
     
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -4365,8 +4388,7 @@ def show_vip_content_edit_interface(chat_id, content_name):
     if file_path.startswith(('http://', 'https://')):
         markup.add(types.InlineKeyboardButton("🔗 View Current File", url=file_path))
     
-    # Add other editing options
-    markup.add(types.InlineKeyboardButton("💰 Edit Price", callback_data=f"vip_edit_price_{name}"))
+    # Add other editing options (price editing removed - VIP content is free for VIP members)
     markup.add(types.InlineKeyboardButton("📝 Edit Description", callback_data=f"vip_edit_desc_{name}"))
     
     # Navigation only - deletion is handled from main VIP management
@@ -5432,29 +5454,6 @@ Add a description that VIP members will see:
             markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data=f"vip_edit_{content_name}"))
             
             bot.send_message(call.message.chat.id, upload_text, reply_markup=markup, parse_mode='HTML')
-        else:
-            bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
-    
-    elif call.data.startswith("vip_edit_price_"):
-        if call.from_user.id == OWNER_ID:
-            content_name = call.data.replace("vip_edit_price_", "")
-            price_text = f"""
-💰 <b>EDIT PRICE FOR VIP CONTENT</b> 💰
-
-<b>Content:</b> {content_name}
-
-💡 <b>Note:</b> VIP content is typically set to 0 Stars because VIP members get FREE access to all VIP content. The subscription fee is what generates revenue.
-
-<b>Quick Command:</b>
-<code>/owner_edit_vip_price {content_name} [new_price]</code>
-
-Example: <code>/owner_edit_vip_price {content_name} 0</code>
-"""
-            
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("🔙 Back to Edit", callback_data=f"vip_edit_{content_name}"))
-            
-            bot.send_message(call.message.chat.id, price_text, reply_markup=markup, parse_mode='HTML')
         else:
             bot.send_message(call.message.chat.id, "❌ Access denied. This is an owner-only command.")
     
