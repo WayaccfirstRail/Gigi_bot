@@ -2322,6 +2322,90 @@ After you send the file, I'll ask for the name, price, and description.
     
     bot.send_message(message.chat.id, upload_text, reply_markup=markup, parse_mode='HTML')
 
+# TEASER HANDLER - MUST BE BEFORE GENERAL CONTENT HANDLER
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'teaser', 'waiting_for_file'))
+def handle_teaser_upload(message):
+    """Handle teaser file upload from owner"""
+    owner_id = message.from_user.id
+    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {get_upload_session(owner_id)}")
+    session = get_upload_session(owner_id)
+    
+    if session['step'] == 'waiting_for_file':
+        # Store file information
+        file_id = None
+        file_type = None
+        
+        if message.photo:
+            file_id = message.photo[-1].file_id  # Get highest resolution
+            file_type = 'photo'
+            session['file_type'] = 'photo'
+        elif message.video:
+            file_id = message.video.file_id
+            file_type = 'video'
+            session['file_type'] = 'video'
+        elif message.animation:
+            file_id = message.animation.file_id
+            file_type = 'gif'
+            session['file_type'] = 'gif'
+        elif message.document:
+            file_id = message.document.file_id
+            # Detect actual file type for documents
+            if hasattr(message.document, 'file_name') and message.document.file_name:
+                file_name = message.document.file_name.lower()
+                if file_name.endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')):
+                    file_type = 'video'
+                    session['file_type'] = 'video'
+                elif file_name.endswith(('.gif')):
+                    file_type = 'gif'
+                    session['file_type'] = 'gif'
+                elif file_name.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    file_type = 'photo'
+                    session['file_type'] = 'photo'
+                else:
+                    file_type = None  # Unsupported document type
+            else:
+                # Check MIME type as fallback
+                mime_type = getattr(message.document, 'mime_type', '')
+                if mime_type.startswith('video/'):
+                    file_type = 'video'
+                    session['file_type'] = 'video'
+                elif mime_type == 'image/gif':
+                    file_type = 'gif'
+                    session['file_type'] = 'gif'
+                elif mime_type.startswith('image/'):
+                    file_type = 'photo'
+                    session['file_type'] = 'photo'
+                else:
+                    file_type = None  # Unsupported document type
+        
+        if file_id and file_type:
+            session['file_id'] = file_id
+            session['file_path'] = file_id  # Store file_id as file_path for consistency with add_teaser function
+            session['step'] = 'waiting_for_description'
+        else:
+            bot.send_message(message.chat.id, "❌ Please send a photo, video, or GIF file. Supported formats: JPG, PNG, MP4, GIF, MOV, AVI.")
+            return
+        
+        # Ask for description
+        desc_text = f"""
+✅ **{file_type.title()} received!**
+
+📝 Now send me a description for this teaser (what fans will see):
+
+Examples:
+• "Behind the scenes sneak peek 😉"
+• "A little taste of what's coming..."
+• "Can't wait to show you the full version 💕"
+
+Type your description:
+"""
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("⏭ Skip Description", callback_data="skip_teaser_description"))
+        markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="cancel_teaser_upload"))
+        
+        bot.send_message(message.chat.id, desc_text, reply_markup=markup)
+
 @bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id) and has_upload_session(message.from_user.id, step='waiting_for_file') and (get_upload_session(message.from_user.id) or {}).get('type') not in ['teaser', 'vip_content', 'vip_teaser'])
 def handle_file_upload(message):
     """Handle file uploads for content creation (excludes teaser sessions)"""
@@ -2897,89 +2981,6 @@ def handle_vip_teaser_edit_upload(message):
             clear_upload_session(owner_id)
     else:
         bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
-
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id, 'teaser', 'waiting_for_file'))
-def handle_teaser_upload(message):
-    """Handle teaser file upload from owner"""
-    owner_id = message.from_user.id
-    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {get_upload_session(owner_id)}")
-    session = get_upload_session(owner_id)
-    
-    if session['step'] == 'waiting_for_file':
-        # Store file information
-        file_id = None
-        file_type = None
-        
-        if message.photo:
-            file_id = message.photo[-1].file_id  # Get highest resolution
-            file_type = 'photo'
-            session['file_type'] = 'photo'
-        elif message.video:
-            file_id = message.video.file_id
-            file_type = 'video'
-            session['file_type'] = 'video'
-        elif message.animation:
-            file_id = message.animation.file_id
-            file_type = 'gif'
-            session['file_type'] = 'gif'
-        elif message.document:
-            file_id = message.document.file_id
-            # Detect actual file type for documents
-            if hasattr(message.document, 'file_name') and message.document.file_name:
-                file_name = message.document.file_name.lower()
-                if file_name.endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm')):
-                    file_type = 'video'
-                    session['file_type'] = 'video'
-                elif file_name.endswith(('.gif')):
-                    file_type = 'gif'
-                    session['file_type'] = 'gif'
-                elif file_name.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                    file_type = 'photo'
-                    session['file_type'] = 'photo'
-                else:
-                    file_type = None  # Unsupported document type
-            else:
-                # Check MIME type as fallback
-                mime_type = getattr(message.document, 'mime_type', '')
-                if mime_type.startswith('video/'):
-                    file_type = 'video'
-                    session['file_type'] = 'video'
-                elif mime_type == 'image/gif':
-                    file_type = 'gif'
-                    session['file_type'] = 'gif'
-                elif mime_type.startswith('image/'):
-                    file_type = 'photo'
-                    session['file_type'] = 'photo'
-                else:
-                    file_type = None  # Unsupported document type
-        
-        if file_id and file_type:
-            session['file_id'] = file_id
-            session['file_path'] = file_id  # Store file_id as file_path for consistency with add_teaser function
-            session['step'] = 'waiting_for_description'
-        else:
-            bot.send_message(message.chat.id, "❌ Please send a photo, video, or GIF file. Supported formats: JPG, PNG, MP4, GIF, MOV, AVI.")
-            return
-        
-        # Ask for description
-        desc_text = f"""
-✅ **{file_type.title()} received!**
-
-📝 Now send me a description for this teaser (what fans will see):
-
-Examples:
-• "Behind the scenes sneak peek 😉"
-• "A little taste of what's coming..."
-• "Can't wait to show you the full version 💕"
-
-Type your description:
-"""
-        
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("⏭ Skip Description", callback_data="skip_teaser_description"))
-        markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="cancel_teaser_upload"))
-        
-        bot.send_message(message.chat.id, desc_text, reply_markup=markup)
 
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_name')
 def handle_vip_name_message(message):
