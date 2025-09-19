@@ -152,6 +152,34 @@ upload_sessions = {}
 # Dictionary to store notification composition sessions
 notification_sessions = {}
 
+# Helper functions for session management
+def start_upload_session(owner_id, session_data):
+    """Start an upload session for a specific owner"""
+    upload_sessions[owner_id] = session_data
+    logger.info(f"Started upload session for owner {owner_id}: {session_data.get('type', 'unknown')}")
+
+def get_upload_session(owner_id):
+    """Get upload session for a specific owner"""
+    return upload_sessions.get(owner_id)
+
+def clear_upload_session(owner_id):
+    """Clear upload session for a specific owner"""
+    if owner_id in upload_sessions:
+        session_type = upload_sessions[owner_id].get('type', 'unknown')
+        del upload_sessions[owner_id]
+        logger.info(f"Cleared upload session for owner {owner_id}: {session_type}")
+
+def has_upload_session(owner_id, session_type=None, step=None):
+    """Check if owner has an upload session with optional type/step filters"""
+    if owner_id not in upload_sessions:
+        return False
+    session = upload_sessions[owner_id]
+    if session_type and session.get('type') != session_type:
+        return False
+    if step and session.get('step') != step:
+        return False
+    return True
+
 # Database setup
 def init_database():
     """Initialize PostgreSQL database with required tables and default data"""
@@ -2265,13 +2293,13 @@ def owner_upload_content(message):
         return
     
     # Initialize upload session
-    upload_sessions[OWNER_ID] = {
+    start_upload_session(message.from_user.id, {
         'step': 'waiting_for_file',
         'name': None,
         'price': None,
         'description': None,
         'file_path': None
-    }
+    })
     
     upload_text = """
 📤 <b>GUIDE FOR UPLOADING CONTENT</b> 📤
@@ -2292,13 +2320,15 @@ After you send the file, I'll ask for the name, price, and description.
     
     bot.send_message(message.chat.id, upload_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') not in ['teaser', 'vip_content', 'vip_teaser'] and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id) and has_upload_session(message.from_user.id, step='waiting_for_file') and (get_upload_session(message.from_user.id) or {}).get('type') not in ['teaser', 'vip_content', 'vip_teaser'])
 def handle_file_upload(message):
     """Handle file uploads for content creation (excludes teaser sessions)"""
-    logger.info(f"General content handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
+    owner_id = message.from_user.id
+    logger.info(f"General content handler triggered - Content type: {message.content_type}, Session: {get_upload_session(owner_id)}")
     
-    # Check if we're in any upload session
-    if OWNER_ID not in upload_sessions or upload_sessions[OWNER_ID]['step'] != 'waiting_for_file':
+    # Get the current session
+    session = get_upload_session(owner_id)
+    if not session or session['step'] != 'waiting_for_file':
         bot.send_message(message.chat.id, "📤 To upload content, start with `/owner_upload` or use VIP upload!")
         return
     
@@ -2383,13 +2413,13 @@ This name will be used internally to identify the content.
         
         bot.send_message(message.chat.id, name_text, reply_markup=markup, parse_mode='HTML')
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions)
+@bot.message_handler(func=lambda message: is_owner(message.from_user.id) and has_upload_session(message.from_user.id))
 def handle_upload_flow(message):
     """Handle the guided upload flow steps"""
-    if OWNER_ID not in upload_sessions:
+    owner_id = message.from_user.id
+    session = get_upload_session(owner_id)
+    if not session:
         return
-    
-    session = upload_sessions[OWNER_ID]
     
     # Handle VIP upload flow
     if session.get('type') == 'vip_content':
@@ -4259,7 +4289,7 @@ def start_vip_teaser_edit_session(chat_id, teaser_id):
         file_path, file_type, description = teaser.file_path, teaser.file_type, teaser.description
     
     # Initialize edit session
-    upload_sessions[OWNERS[0]] = {
+    upload_sessions[OWNER_ID] = {
         'type': 'vip_teaser_edit',
         'step': 'waiting_for_file',
         'teaser_id': teaser_id,
@@ -5296,7 +5326,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_price_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP price setting session
-            upload_sessions[OWNERS[0]] = {
+            upload_sessions[OWNER_ID] = {
                 'type': 'vip_settings',
                 'setting': 'price',
                 'step': 'waiting_for_input'
@@ -5331,7 +5361,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_duration_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP duration setting session
-            upload_sessions[OWNERS[0]] = {
+            upload_sessions[OWNER_ID] = {
                 'type': 'vip_settings',
                 'setting': 'duration',
                 'step': 'waiting_for_input'
@@ -5366,7 +5396,7 @@ Add a description that VIP members will see:
     elif call.data == "vip_set_description_btn":
         if call.from_user.id == OWNER_ID:
             # Start VIP description setting session
-            upload_sessions[OWNERS[0]] = {
+            upload_sessions[OWNER_ID] = {
                 'type': 'vip_settings',
                 'setting': 'description',
                 'step': 'waiting_for_input'
@@ -5516,7 +5546,7 @@ Add a description that VIP members will see:
         if call.from_user.id == OWNER_ID:
             content_name = call.data.replace("vip_upload_file_", "")
             # Start file upload session for this specific VIP content
-            upload_sessions[OWNERS[0]] = {
+            upload_sessions[OWNER_ID] = {
                 'type': 'vip_file_update',
                 'step': 'waiting_for_file',
                 'content_name': content_name,
@@ -5731,7 +5761,7 @@ Add a description that VIP members will see:
         if call.from_user.id == OWNER_ID:
             user_id = int(call.data.replace("select_loyal_", ""))
             # Start reason input session
-            upload_sessions[OWNERS[0]] = {
+            upload_sessions[OWNER_ID] = {
                 'type': 'loyal_fan_reason',
                 'user_id': user_id,
                 'step': 'waiting_for_reason'
