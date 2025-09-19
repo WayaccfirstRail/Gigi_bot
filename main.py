@@ -6,7 +6,7 @@ from telebot import types
 from flask import render_template_string, has_app_context
 from app import app, db
 from models import *
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, case
 import logging
 from functools import wraps
 import socket
@@ -3039,24 +3039,33 @@ def owner_list_users(message):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    # Only show paying customers (total_stars_spent > 0) and exclude bot user ID
-    cursor.execute('''
-        SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, u.interaction_count, 
-               CASE WHEN l.user_id IS NOT NULL THEN 'Yes' ELSE 'No' END as is_loyal
-        FROM users u
-        LEFT JOIN loyal_fans l ON u.user_id = l.user_id
-        WHERE u.total_stars_spent > 0 AND u.user_id != ?
-        ORDER BY u.total_stars_spent DESC
-    ''', (bot.get_me().id,))
-    paying_customers = cursor.fetchall()
-    
-    # Get all customers stats for comparison
-    cursor.execute('SELECT COUNT(*), SUM(total_stars_spent) FROM users WHERE total_stars_spent > 0 AND user_id != ?', (bot.get_me().id,))
-    total_paying_customers, total_revenue = cursor.fetchone()
-    
-    conn.close()
+    with app.app_context():
+        try:
+            bot_info = bot.get_me()
+            bot_id = bot_info.id
+        except:
+            bot_id = 0
+        
+        # Get paying customers with loyal fan status
+        paying_customers = db.session.query(
+            User.user_id, User.username, User.first_name, User.total_stars_spent, 
+            User.interaction_count, 
+            case([(LoyalFan.user_id != None, 'Yes')], else_='No').label('is_loyal')
+        ).outerjoin(LoyalFan, User.user_id == LoyalFan.user_id).filter(
+            User.total_stars_spent > 0,
+            User.user_id != bot_id
+        ).order_by(User.total_stars_spent.desc()).all()
+        
+        # Get stats
+        stats = db.session.query(
+            func.count(User.user_id),
+            func.sum(User.total_stars_spent)
+        ).filter(
+            User.total_stars_spent > 0,
+            User.user_id != bot_id
+        ).first()
+        
+        total_paying_customers, total_revenue = stats[0] or 0, stats[1] or 0
     
     if paying_customers:
         user_text = "💰 <b>PAYING CUSTOMERS</b> 💰\n\n"
@@ -3089,26 +3098,41 @@ def owner_analytics(message):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Get paying customers statistics (exclude bot)
-    cursor.execute('SELECT COUNT(*), SUM(total_stars_spent), SUM(interaction_count) FROM users WHERE total_stars_spent > 0 AND user_id != ?', (bot.get_me().id,))
-    paying_customers, total_revenue, paying_interactions = cursor.fetchone()
-    
-    # Get all users statistics for comparison (exclude bot)
-    cursor.execute('SELECT COUNT(*), SUM(interaction_count) FROM users WHERE user_id != ?', (bot.get_me().id,))
-    total_users, total_interactions = cursor.fetchone()
-    
-    # Get top spenders (only paying customers)
-    cursor.execute('SELECT first_name, username, total_stars_spent FROM users WHERE total_stars_spent > 0 AND user_id != ? ORDER BY total_stars_spent DESC LIMIT 5', (bot.get_me().id,))
-    top_spenders = cursor.fetchall()
-    
-    # Get content performance
-    cursor.execute('SELECT name, price_stars FROM content_items')
-    content_items = cursor.fetchall()
-    
-    conn.close()
+    with app.app_context():
+        try:
+            bot_info = bot.get_me()
+            bot_id = bot_info.id
+        except:
+            bot_id = 0
+        
+        # Get paying customers statistics
+        paying_stats = db.session.query(
+            func.count(User.user_id),
+            func.sum(User.total_stars_spent),
+            func.sum(User.interaction_count)
+        ).filter(
+            User.total_stars_spent > 0,
+            User.user_id != bot_id
+        ).first()
+        
+        paying_customers, total_revenue, paying_interactions = paying_stats[0] or 0, paying_stats[1] or 0, paying_stats[2] or 0
+        
+        # Get all users statistics
+        all_stats = db.session.query(
+            func.count(User.user_id),
+            func.sum(User.interaction_count)
+        ).filter(User.user_id != bot_id).first()
+        
+        total_users, total_interactions = all_stats[0] or 0, all_stats[1] or 0
+        
+        # Get top spenders
+        top_spenders = User.query.filter(
+            User.total_stars_spent > 0,
+            User.user_id != bot_id
+        ).order_by(User.total_stars_spent.desc()).limit(5).all()
+        
+        # Get content performance
+        content_items = ContentItem.query.with_entities(ContentItem.name, ContentItem.price_stars).all()
     
     # Calculate conversion rate
     conversion_rate = (paying_customers / max(total_users or 1, 1)) * 100 if total_users else 0
@@ -3127,8 +3151,8 @@ def owner_analytics(message):
 """
     
     if top_spenders:
-        for i, (first_name, username, spent) in enumerate(top_spenders, 1):
-            analytics_text += f"{i}. {first_name or 'N/A'} (@{username or 'none'}): {spent} Stars\n"
+        for i, user in enumerate(top_spenders, 1):
+            analytics_text += f"{i}. {user.first_name or 'N/A'} (@{user.username or 'none'}): {user.total_stars_spent} Stars\n"
     else:
         analytics_text += "No paying customers yet.\n"
     
@@ -3161,11 +3185,14 @@ def owner_set_response(message):
         bot.send_message(message.chat.id, f"❌ Invalid key. Valid keys: {', '.join(valid_keys)}")
         return
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('INSERT OR REPLACE INTO responses (key, text) VALUES (?, ?)', (key, text))
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        response = Response.query.filter_by(key=key).first()
+        if response:
+            response.text = text
+        else:
+            response = Response(key=key, text=text)
+            db.session.add(response)
+        db.session.commit()
     
     bot.send_message(message.chat.id, f"✅ AI response for '{key}' updated successfully!")
 
@@ -3272,11 +3299,9 @@ Choose an action below to manage your content:
 def show_edit_content_menu(chat_id):
     """Show Edit Content menu with all content items as buttons"""
     # Get only browse content items (VIP content is managed separately)
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT name, price_stars, description, content_type, created_date FROM content_items WHERE content_type = ? ORDER BY created_date DESC', ('browse',))
-    items = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        items = ContentItem.query.filter_by(content_type='browse').order_by(ContentItem.created_date.desc()).all()
+        items = [(item.name, item.price_stars, item.description, item.content_type, item.created_date.isoformat()) for item in items]
     
     if not items:
         empty_text = """
@@ -3331,11 +3356,9 @@ Found {len(items)} browse content item(s). Click on any item below to edit its d
 def show_delete_content_menu(chat_id):
     """Show Delete Content menu with all content items as buttons"""
     # Get only browse content items (VIP content is managed separately)
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT name, price_stars, description, content_type, created_date FROM content_items WHERE content_type = ? ORDER BY created_date DESC', ('browse',))
-    items = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        items = ContentItem.query.filter_by(content_type='browse').order_by(ContentItem.created_date.desc()).all()
+        items = [(item.name, item.price_stars, item.description, item.content_type, item.created_date.isoformat()) for item in items]
     
     if not items:
         empty_text = """
@@ -3392,11 +3415,12 @@ Found {len(items)} browse content item(s). Click on any item below to permanentl
 def show_content_edit_interface(chat_id, content_name):
     """Show edit interface for a specific content item"""
     # Get content details
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT name, price_stars, file_path, description, content_type, created_date FROM content_items WHERE name = ?', (content_name,))
-    content = cursor.fetchone()
-    conn.close()
+    with app.app_context():
+        item = ContentItem.query.filter_by(name=content_name).first()
+        if item:
+            content = (item.name, item.price_stars, item.file_path, item.description, item.content_type, item.created_date.isoformat())
+        else:
+            content = None
     
     if not content:
         bot.send_message(chat_id, f"❌ Content '{content_name}' not found.")
@@ -3587,11 +3611,8 @@ Choose an action below to configure bot settings:
 def show_loyal_fan_management_menu(chat_id):
     """Show Loyal Fan Management section menu"""
     # Get loyal fan count
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM loyal_fans')
-    loyal_count = cursor.fetchone()[0]
-    conn.close()
+    with app.app_context():
+        loyal_count = LoyalFan.query.count()
     
     menu_text = f"""
 ⭐ *LOYAL FAN MANAGEMENT* ⭐
@@ -3647,35 +3668,23 @@ def owner_vip_analytics(message):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Get VIP statistics
-    cursor.execute('SELECT COUNT(*) FROM vip_subscriptions WHERE is_active = 1')
-    active_vip_count = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM vip_subscriptions')
-    total_vip_subscriptions = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT SUM(total_payments) FROM vip_subscriptions')
-    total_vip_payments = cursor.fetchone()[0] or 0
+    with app.app_context():
+        # Get VIP statistics
+        active_vip_count = VipSubscription.query.filter_by(is_active=True).count()
+        total_vip_subscriptions = VipSubscription.query.count()
+        total_vip_payments = db.session.query(func.sum(VipSubscription.total_payments)).scalar() or 0
     
     # Get VIP settings
-    vip_price = int(get_vip_settings('vip_price_stars') or 399)
-    total_vip_revenue = total_vip_payments * vip_price
-    
-    # Get VIP users details
-    cursor.execute('''
-        SELECT u.first_name, u.username, v.start_date, v.expiry_date, v.total_payments
-        FROM vip_subscriptions v
-        JOIN users u ON v.user_id = u.user_id
-        WHERE v.is_active = 1
-        ORDER BY v.total_payments DESC
-        LIMIT 10
-    ''')
-    active_vips = cursor.fetchall()
-    
-    conn.close()
+        vip_price = int(get_vip_settings('vip_price_stars') or 399)
+        total_vip_revenue = total_vip_payments * vip_price
+        
+        # Get VIP users details
+        active_vips = db.session.query(
+            User.first_name, User.username, VipSubscription.start_date, 
+            VipSubscription.expiry_date, VipSubscription.total_payments
+        ).join(VipSubscription, User.user_id == VipSubscription.user_id).filter(
+            VipSubscription.is_active == True
+        ).order_by(VipSubscription.total_payments.desc()).limit(10).all()
     
     analytics_text = f"""
 💎 **VIP ANALYTICS DASHBOARD** 💎
@@ -3711,11 +3720,9 @@ def vip_command(message):
     vip_duration = get_vip_settings('vip_duration_days') or '30'
     
     # Get VIP subscriber count
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM vip_subscriptions WHERE is_active = 1')
-    vip_subscribers = cursor.fetchone()[0]
-    conn.close()
+    with app.app_context():
+        vip_subscribers = VipSubscription.query.filter_by(is_active=True).count()
+        vip_count = ContentItem.query.filter_by(content_type='vip').count()
     
     dashboard_text = f"""
 💎 <b>VIP CONTENT MANAGEMENT DASHBOARD</b> 💎
@@ -3877,31 +3884,22 @@ Use the buttons below for guided setup, or use manual commands:
 def show_vip_analytics(chat_id):
     """Show VIP analytics dashboard"""
     # Get VIP statistics
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Active VIP subscribers
-    cursor.execute('SELECT COUNT(*) FROM vip_subscriptions WHERE is_active = 1')
-    active_vips = cursor.fetchone()[0]
-    
-    # Total VIP revenue (all time)
-    vip_price = int(get_vip_settings('vip_price_stars') or 399)
-    cursor.execute('SELECT SUM(total_payments) FROM vip_subscriptions')
-    total_payments = cursor.fetchone()[0] or 0
-    total_vip_revenue = total_payments * vip_price
-    
-    # Top VIP subscribers
-    cursor.execute('''
-        SELECT vs.user_id, u.first_name, u.username, vs.total_payments, vs.expiry_date
-        FROM vip_subscriptions vs
-        LEFT JOIN users u ON vs.user_id = u.user_id
-        WHERE vs.is_active = 1
-        ORDER BY vs.total_payments DESC
-        LIMIT 5
-    ''')
-    top_vips = cursor.fetchall()
-    
-    conn.close()
+    with app.app_context():
+        # Active VIP subscribers
+        active_vips = VipSubscription.query.filter_by(is_active=True).count()
+        
+        # Total VIP revenue (all time)
+        vip_price = int(get_vip_settings('vip_price_stars') or 399)
+        total_payments = db.session.query(func.sum(VipSubscription.total_payments)).scalar() or 0
+        total_vip_revenue = total_payments * vip_price
+        
+        # Top VIP subscribers
+        top_vips = db.session.query(
+            VipSubscription.user_id, User.first_name, User.username, 
+            VipSubscription.total_payments, VipSubscription.expiry_date
+        ).outerjoin(User, VipSubscription.user_id == User.user_id).filter(
+            VipSubscription.is_active == True
+        ).order_by(VipSubscription.total_payments.desc()).limit(5).all()
     
     analytics_text = f"""
 📊 <b>VIP ANALYTICS DASHBOARD</b> 📊
@@ -6353,7 +6351,7 @@ def run_bot():
                     none_stop=True,
                     timeout=30,  # 30 second timeout for requests
                     skip_pending=True,  # Skip pending messages on restart
-                    num_threads=1  # Emergency: Reduce concurrency
+                    # num_threads parameter removed - not supported in current pyTelegramBotAPI
                 )
             logger.info("Bot polling started successfully!")
             break  # If we reach here, polling started successfully
