@@ -6037,15 +6037,7 @@ def generate_owner_access_url(content_name):
 
 # Flask routes for Replit hosting
 
-@app.route('/')
-def home():
-    """Basic health check endpoint"""
-    return "🤖 Content Creator Bot is running! 🌟"
-
-@app.route('/health')
-def health():
-    """Health check for monitoring"""
-    return {"status": "healthy", "bot": "running"}
+# Basic routes removed - replaced with more comprehensive routes below
 
 @app.route('/content/preview/<content_name>')
 def preview_content(content_name):

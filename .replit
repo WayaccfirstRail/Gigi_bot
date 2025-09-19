@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Web Server"
+args = "Content Creator Bot"
 
 [[workflows.workflow]]
-name = "Web Server"
+name = "Content Creator Bot"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -35,7 +35,7 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 42827
+localPort = 42419
 externalPort = 3000
 
 [deployment]
