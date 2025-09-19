@@ -191,117 +191,106 @@ def add_or_update_user(user):
         logger.warning(f"Could not get bot info: {e}")
         # Continue processing if we can't get bot info
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    now = datetime.datetime.now().isoformat()
-    
-    # Check if user exists
-    existing_user = get_user_data(user.id)
-    
-    if existing_user:
-        # Update interaction count and last interaction
-        cursor.execute('''
-            UPDATE users 
-            SET interaction_count = interaction_count + 1, 
-                last_interaction = ?,
-                username = ?,
-                first_name = ?
-            WHERE user_id = ?
-        ''', (now, user.username, user.first_name, user.id))
-    else:
-        # Add new user
-        cursor.execute('''
-            INSERT INTO users (user_id, username, first_name, join_date, last_interaction, interaction_count)
-            VALUES (?, ?, ?, ?, ?, 1)
-        ''', (user.id, user.username, user.first_name, now, now))
+    with app.app_context():
+        now = datetime.datetime.now()
         
-        # Send welcome notification to all owners
-        try:
-            notify_all_owners(f"👋 New user started chatting!\n👤 {user.first_name} (@{user.username})\n🆔 ID: {user.id}")
-        except:
-            pass
-    
-    conn.commit()
-    conn.close()
+        # Check if user exists
+        existing_user = get_user_data(user.id)
+        
+        if existing_user:
+            # Update interaction count and last interaction
+            existing_user.interaction_count += 1
+            existing_user.last_interaction = now
+            existing_user.username = user.username
+            existing_user.first_name = user.first_name
+        else:
+            # Add new user
+            new_user = User(
+                user_id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                join_date=now,
+                last_interaction=now,
+                interaction_count=1
+            )
+            db.session.add(new_user)
+            
+            # Send welcome notification to all owners
+            try:
+                notify_all_owners(f"👋 New user started chatting!\n👤 {user.first_name} (@{user.username})\n🆔 ID: {user.id}")
+            except:
+                pass
+        
+        db.session.commit()
 
 def check_user_owns_content(user_id, content_name):
     """Check if user has already purchased specific content"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM user_purchases WHERE user_id = ? AND content_name = ?', (user_id, content_name))
-    purchase = cursor.fetchone()
-    conn.close()
+    purchase = UserPurchase.query.filter_by(user_id=user_id, content_name=content_name).first()
     return purchase is not None
 
 def get_user_purchased_content(user_id):
     """Get all BROWSE content purchased by a user - does not include VIP content"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT up.content_name, up.purchase_date, up.price_paid, ci.description, ci.file_path
-        FROM user_purchases up
-        JOIN content_items ci ON up.content_name = ci.name
-        WHERE up.user_id = ? AND ci.content_type = ?
-        ORDER BY up.purchase_date DESC
-    ''', (user_id, 'browse'))
-    purchases = cursor.fetchall()
-    conn.close()
-    return purchases
+    purchases = db.session.query(UserPurchase, ContentItem).join(
+        ContentItem, UserPurchase.content_name == ContentItem.name
+    ).filter(
+        UserPurchase.user_id == user_id,
+        ContentItem.content_type == 'browse'
+    ).order_by(UserPurchase.purchase_date.desc()).all()
+    
+    return [(p.UserPurchase.content_name, p.UserPurchase.purchase_date, 
+             p.UserPurchase.price_paid, p.ContentItem.description, 
+             p.ContentItem.file_path) for p in purchases]
 
 def get_vip_subscribers():
     """Get all active VIP subscribers for notifications"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from sqlalchemy import and_, func
     
     # Get active VIP subscribers
-    cursor.execute('''
-        SELECT u.user_id, u.first_name, u.username
-        FROM users u
-        JOIN vip_subscriptions v ON u.user_id = v.user_id
-        WHERE v.is_active = 1 AND datetime(v.expiry_date) > datetime('now')
-            AND u.user_id != ?
-            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
-    ''', (OWNER_ID,))
+    vip_users = db.session.query(User.user_id, User.first_name, User.username).join(
+        VipSubscription, User.user_id == VipSubscription.user_id
+    ).filter(
+        and_(
+            VipSubscription.is_active == True,
+            VipSubscription.expiry_date > func.now(),
+            User.user_id != OWNER_ID,
+            db.or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+        )
+    ).all()
     
-    vip_users = cursor.fetchall()
-    conn.close()
     return vip_users
 
 def get_non_vip_users():
     """Get all non-VIP users (users without active VIP subscriptions) for notifications"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from sqlalchemy import and_, func, or_
     
     # Get users who are not VIP subscribers (no active subscription or expired)
-    cursor.execute('''
-        SELECT u.user_id, u.first_name, u.username
-        FROM users u
-        LEFT JOIN vip_subscriptions v ON u.user_id = v.user_id
-        WHERE (v.user_id IS NULL 
-           OR v.is_active = 0 
-           OR datetime(v.expiry_date) <= datetime('now'))
-            AND u.user_id != ?
-            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
-    ''', (OWNER_ID,))
+    non_vip_users = db.session.query(User.user_id, User.first_name, User.username).outerjoin(
+        VipSubscription, User.user_id == VipSubscription.user_id
+    ).filter(
+        and_(
+            or_(
+                VipSubscription.user_id.is_(None),
+                VipSubscription.is_active == False,
+                VipSubscription.expiry_date <= func.now()
+            ),
+            User.user_id != OWNER_ID,
+            or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+        )
+    ).all()
     
-    non_vip_users = cursor.fetchall()
-    conn.close()
     return non_vip_users
 
 def get_all_users():
     """Get all users for general notifications"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT user_id, first_name, username 
-        FROM users 
-        WHERE user_id != ? 
-            AND (username IS NULL OR LOWER(username) NOT LIKE '%bot')
-        ORDER BY last_interaction DESC
-    ''', (OWNER_ID,))
-    all_users = cursor.fetchall()
-    conn.close()
+    from sqlalchemy import and_, func, or_
+    
+    all_users = db.session.query(User.user_id, User.first_name, User.username).filter(
+        and_(
+            User.user_id != OWNER_ID,
+            or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+        )
+    ).order_by(User.last_interaction.desc()).all()
+    
     return all_users
 
 def send_notification_to_users(user_list, message_text, markup=None, pin_message=False):
