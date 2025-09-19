@@ -2633,7 +2633,7 @@ This will be shown to non-VIP users when they use /teaser command.
     
     bot.send_message(message.chat.id, upload_text, reply_markup=markup)
 
-@bot.message_handler(content_types=['photo', 'video', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'animation', 'document'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'vip_content' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
 def handle_vip_upload_files(message):
     """Handle VIP content file uploads - photos, videos, and animations only"""
     logger.info(f"VIP upload handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
@@ -2651,6 +2651,14 @@ def handle_vip_upload_files(message):
     elif message.content_type == 'animation':
         file_id = message.animation.file_id
         file_type = "GIF"
+    elif message.content_type == 'document':
+        # Handle uncompressed photos sent as documents
+        if message.document.mime_type and message.document.mime_type.startswith('image/'):
+            file_id = message.document.file_id
+            file_type = "Photo"
+        else:
+            bot.send_message(message.chat.id, "❌ Document type not supported for VIP content. Please send image files, videos, or GIFs only.")
+            return
     
     if file_id and file_type:
         handle_vip_file_upload(message, file_id, file_type)
@@ -3827,9 +3835,8 @@ VIP content is exclusive to subscribers and generates more revenue.
 
 def show_vip_content_management(chat_id):
     """Show VIP content management interface"""
-    # Temporarily disabled during migration
-    # vip_content = get_vip_content_list()
-    vip_content = []  # Temporary placeholder
+    # Get VIP content from database
+    vip_content = get_vip_content_list()
     
     if not vip_content:
         empty_text = """
