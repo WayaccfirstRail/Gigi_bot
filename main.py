@@ -4144,18 +4144,15 @@ Select which VIP teaser you want to edit (replace photo/video):
 
 def start_vip_teaser_edit_session(chat_id, teaser_id):
     """Start VIP teaser edit session"""
-    # Get teaser info
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, file_type, description FROM teasers WHERE id = ? AND vip_only = 1', (teaser_id,))
-    teaser = cursor.fetchone()
-    conn.close()
-    
-    if not teaser:
-        bot.send_message(chat_id, "❌ VIP teaser not found.")
-        return
-    
-    file_path, file_type, description = teaser
+    with app.app_context():
+        # Get teaser info using SQLAlchemy
+        teaser = Teaser.query.filter_by(id=teaser_id, vip_only=True).first()
+        
+        if not teaser:
+            bot.send_message(chat_id, "❌ VIP teaser not found.")
+            return
+        
+        file_path, file_type, description = teaser.file_path, teaser.file_type, teaser.description
     
     # Initialize edit session
     upload_sessions[OWNERS[0]] = {
@@ -4353,20 +4350,17 @@ def owner_list_vips(message):
         bot.send_message(message.chat.id, "❌ Access denied. This is an owner-only command.")
         return
     
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Get all active VIP users
-    cursor.execute('''
-        SELECT u.user_id, u.first_name, u.username, v.start_date, v.expiry_date, v.total_payments
-        FROM vip_subscriptions v
-        JOIN users u ON v.user_id = u.user_id
-        WHERE v.is_active = 1
-        ORDER BY v.expiry_date DESC
-    ''')
-    vip_users = cursor.fetchall()
-    
-    conn.close()
+    with app.app_context():
+        # Get all active VIP users using SQLAlchemy
+        vip_users_query = db.session.query(
+            User.user_id, User.first_name, User.username, 
+            VipSubscription.start_date, VipSubscription.expiry_date, VipSubscription.total_payments
+        ).join(VipSubscription, User.user_id == VipSubscription.user_id).filter(
+            VipSubscription.is_active == True
+        ).order_by(VipSubscription.expiry_date.desc()).all()
+        
+        vip_users = [(user_id, first_name, username, start_date, expiry_date, total_payments) 
+                     for user_id, first_name, username, start_date, expiry_date, total_payments in vip_users_query]
     
     if vip_users:
         vip_text = "💎 <b>ACTIVE VIP MEMBERS</b> 💎\n\n"
@@ -4500,13 +4494,15 @@ def owner_edit_price(message):
             bot.send_message(message.chat.id, "❌ Price must be between 0 and 150,000 Stars.")
             return
         
-        # Update content price
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE content_items SET price_stars = ? WHERE name = ?', (new_price, content_name))
-        updated_count = cursor.rowcount
-        conn.commit()
-        conn.close()
+        # Update content price using SQLAlchemy
+        with app.app_context():
+            content_item = ContentItem.query.filter_by(name=content_name).first()
+            if content_item:
+                content_item.price_stars = new_price
+                db.session.commit()
+                updated_count = 1
+            else:
+                updated_count = 0
         
         if updated_count > 0:
             bot.send_message(message.chat.id, f"✅ Price for '{content_name}' updated to {new_price:,} Stars!")
@@ -4539,13 +4535,15 @@ def owner_edit_description(message):
             bot.send_message(message.chat.id, "❌ Description must be between 5 and 500 characters.")
             return
         
-        # Update content description
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE content_items SET description = ? WHERE name = ?', (new_description, content_name))
-        updated_count = cursor.rowcount
-        conn.commit()
-        conn.close()
+        # Update content description using SQLAlchemy
+        with app.app_context():
+            content_item = ContentItem.query.filter_by(name=content_name).first()
+            if content_item:
+                content_item.description = new_description
+                db.session.commit()
+                updated_count = 1
+            else:
+                updated_count = 0
         
         if updated_count > 0:
             bot.send_message(message.chat.id, f"✅ Description for '{content_name}' updated successfully!")
@@ -4576,13 +4574,15 @@ def owner_edit_file_path(message):
             bot.send_message(message.chat.id, "❌ File path too short. Please provide a valid file path or URL.")
             return
         
-        # Update content file path
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE content_items SET file_path = ? WHERE name = ?', (new_file_path, content_name))
-        updated_count = cursor.rowcount
-        conn.commit()
-        conn.close()
+        # Update content file path using SQLAlchemy
+        with app.app_context():
+            content_item = ContentItem.query.filter_by(name=content_name).first()
+            if content_item:
+                content_item.file_path = new_file_path
+                db.session.commit()
+                updated_count = 1
+            else:
+                updated_count = 0
         
         if updated_count > 0:
             bot.send_message(message.chat.id, f"✅ File path for '{content_name}' updated successfully!")
@@ -4596,21 +4596,20 @@ def owner_edit_file_path(message):
 
 def show_mark_loyal_fan_interface(chat_id):
     """Show interface to mark a user as loyal fan"""
-    # Get all users (paying customers prioritized)
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, u.interaction_count
-        FROM users u
-        LEFT JOIN loyal_fans l ON u.user_id = l.user_id
-        WHERE l.user_id IS NULL 
-            AND u.user_id != ?
-            AND (u.username IS NULL OR LOWER(u.username) NOT LIKE '%bot')
-        ORDER BY u.total_stars_spent DESC, u.interaction_count DESC
-        LIMIT 20
-    ''', (OWNER_ID,))
-    non_loyal_users = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        # Get all users (paying customers prioritized) using SQLAlchemy
+        non_loyal_users_query = db.session.query(
+            User.user_id, User.username, User.first_name, User.total_stars_spent, User.interaction_count
+        ).outerjoin(LoyalFan, User.user_id == LoyalFan.user_id).filter(
+            and_(
+                LoyalFan.user_id.is_(None),
+                User.user_id != OWNER_ID,
+                or_(User.username.is_(None), ~func.lower(User.username).like('%bot'))
+            )
+        ).order_by(User.total_stars_spent.desc(), User.interaction_count.desc()).limit(20).all()
+        
+        non_loyal_users = [(user_id, username, first_name, total_stars_spent, interaction_count) 
+                          for user_id, username, first_name, total_stars_spent, interaction_count in non_loyal_users_query]
     
     if not non_loyal_users:
         empty_text = """
@@ -4654,17 +4653,15 @@ Found {len(non_loyal_users)} user(s) not yet marked as loyal. Top customers show
 
 def show_loyal_fans_list(chat_id):
     """Show all loyal fans with their details"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT u.user_id, u.username, u.first_name, u.total_stars_spent, 
-               l.reason, l.date_marked
-        FROM loyal_fans l
-        JOIN users u ON l.user_id = u.user_id
-        ORDER BY l.date_marked DESC
-    ''')
-    loyal_fans = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        # Get all loyal fans with user details using SQLAlchemy
+        loyal_fans_query = db.session.query(
+            User.user_id, User.username, User.first_name, User.total_stars_spent,
+            LoyalFan.reason, LoyalFan.date_marked
+        ).join(User, LoyalFan.user_id == User.user_id).order_by(LoyalFan.date_marked.desc()).all()
+        
+        loyal_fans = [(user_id, username, first_name, total_stars_spent, reason, date_marked) 
+                     for user_id, username, first_name, total_stars_spent, reason, date_marked in loyal_fans_query]
     
     if not loyal_fans:
         empty_text = """
@@ -4718,16 +4715,14 @@ Start marking your best customers as loyal fans to track your VIP community.
 
 def show_remove_loyal_fan_interface(chat_id):
     """Show interface to remove loyal fan status"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT u.user_id, u.username, u.first_name, l.reason, l.date_marked
-        FROM loyal_fans l
-        JOIN users u ON l.user_id = u.user_id
-        ORDER BY l.date_marked DESC
-    ''')
-    loyal_fans = cursor.fetchall()
-    conn.close()
+    with app.app_context():
+        # Get all loyal fans with user details using SQLAlchemy
+        loyal_fans_query = db.session.query(
+            User.user_id, User.username, User.first_name, LoyalFan.reason, LoyalFan.date_marked
+        ).join(User, LoyalFan.user_id == User.user_id).order_by(LoyalFan.date_marked.desc()).all()
+        
+        loyal_fans = [(user_id, username, first_name, reason, date_marked) 
+                     for user_id, username, first_name, reason, date_marked in loyal_fans_query]
     
     if not loyal_fans:
         empty_text = """
@@ -5101,12 +5096,9 @@ Your teaser is now live! Non-VIP users will see this when they use /teaser.
                 # Check if suggested name is unique
                 suggested_name = session['suggested_name']
                 
-                # Check if name already exists
-                conn = sqlite3.connect('content_bot.db')
-                cursor = conn.cursor()
-                cursor.execute('SELECT name FROM content_items WHERE name = ?', (suggested_name,))
-                existing = cursor.fetchone()
-                conn.close()
+                # Check if name already exists using SQLAlchemy
+                with app.app_context():
+                    existing = ContentItem.query.filter_by(name=suggested_name).first()
                 
                 if existing:
                     # Make name unique by adding timestamp
@@ -5472,13 +5464,15 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
     elif call.data.startswith("confirm_delete_content_"):
         if call.from_user.id == OWNER_ID:
             content_name = call.data.replace("confirm_delete_content_", "")
-            # Delete the content
-            conn = sqlite3.connect('content_bot.db')
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM content_items WHERE name = ?', (content_name,))
-            deleted_count = cursor.rowcount
-            conn.commit()
-            conn.close()
+            # Delete the content using SQLAlchemy
+            with app.app_context():
+                content_item = ContentItem.query.filter_by(name=content_name).first()
+                if content_item:
+                    db.session.delete(content_item)
+                    db.session.commit()
+                    deleted_count = 1
+                else:
+                    deleted_count = 0
             
             if deleted_count > 0:
                 bot.send_message(call.message.chat.id, f"✅ Content '{content_name}' deleted successfully!")
@@ -5491,13 +5485,15 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
     elif call.data.startswith("confirm_delete_"):
         if call.from_user.id == OWNER_ID:
             content_name = call.data.replace("confirm_delete_", "")
-            # Delete the content
-            conn = sqlite3.connect('content_bot.db')
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM content_items WHERE name = ?', (content_name,))
-            deleted_count = cursor.rowcount
-            conn.commit()
-            conn.close()
+            # Delete the content using SQLAlchemy
+            with app.app_context():
+                content_item = ContentItem.query.filter_by(name=content_name).first()
+                if content_item:
+                    db.session.delete(content_item)
+                    db.session.commit()
+                    deleted_count = 1
+                else:
+                    deleted_count = 0
             
             if deleted_count > 0:
                 bot.send_message(call.message.chat.id, f"✅ Content '{content_name}' deleted successfully!")
@@ -5624,15 +5620,12 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
                 'step': 'waiting_for_reason'
             }
             
-            # Get user info
-            conn = sqlite3.connect('content_bot.db')
-            cursor = conn.cursor()
-            cursor.execute('SELECT username, first_name FROM users WHERE user_id = ?', (user_id,))
-            user_info = cursor.fetchone()
-            conn.close()
+            # Get user info using SQLAlchemy
+            with app.app_context():
+                user = User.query.filter_by(user_id=user_id).first()
             
-            if user_info:
-                username, first_name = user_info
+            if user:
+                username, first_name = user.username, user.first_name
                 reason_text = f"""
 ⭐ <b>MARK AS LOYAL FAN</b> ⭐
 
@@ -5663,13 +5656,15 @@ Example: <code>/owner_edit_vip_price {content_name} 0</code>
         if call.from_user.id == OWNER_ID:
             user_id = int(call.data.replace("confirm_remove_loyal_", ""))
             
-            # Remove loyal fan status
-            conn = sqlite3.connect('content_bot.db')
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM loyal_fans WHERE user_id = ?', (user_id,))
-            removed_count = cursor.rowcount
-            conn.commit()
-            conn.close()
+            # Remove loyal fan status using SQLAlchemy
+            with app.app_context():
+                loyal_fan = LoyalFan.query.filter_by(user_id=user_id).first()
+                if loyal_fan:
+                    db.session.delete(loyal_fan)
+                    db.session.commit()
+                    removed_count = 1
+                else:
+                    removed_count = 0
             
             if removed_count > 0:
                 bot.send_message(call.message.chat.id, "✅ Loyal fan status removed successfully!")
@@ -5782,13 +5777,12 @@ def successful_payment_handler(message):
     if len(payload_parts) >= 2 and payload_parts[0] == 'vip' and payload_parts[1] == 'subscription':
         user_id = int(payload_parts[2])
         
-        # Update user's total spent
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        cursor.execute('UPDATE users SET total_stars_spent = total_stars_spent + ? WHERE user_id = ?', 
-                      (payment.total_amount, user_id))
-        conn.commit()
-        conn.close()
+        # Update user's total spent using SQLAlchemy
+        with app.app_context():
+            user = User.query.filter_by(user_id=user_id).first()
+            if user:
+                user.total_stars_spent += payment.total_amount
+                db.session.commit()
         
         # Activate VIP subscription
         duration_days = activate_vip_subscription(user_id)
@@ -6288,24 +6282,28 @@ def handle_loyal_fan_reason_input(message):
             bot.send_message(message.chat.id, "❌ Reason must be between 3 and 200 characters. Please try again:")
             return
         
-        # Mark user as loyal fan
-        conn = sqlite3.connect('content_bot.db')
-        cursor = conn.cursor()
-        
-        # Check if user exists
-        cursor.execute('SELECT first_name, username FROM users WHERE user_id = ?', (user_id,))
-        user_info = cursor.fetchone()
-        
-        if user_info:
-            first_name, username = user_info
+        # Mark user as loyal fan using SQLAlchemy
+        with app.app_context():
+            # Check if user exists
+            user = User.query.filter_by(user_id=user_id).first()
             
-            # Insert loyal fan record
-            now = datetime.datetime.now().isoformat()
-            cursor.execute('INSERT OR REPLACE INTO loyal_fans (user_id, reason, date_marked) VALUES (?, ?, ?)', 
-                         (user_id, reason, now))
-            conn.commit()
-            
-            success_text = f"""
+            if user:
+                first_name, username = user.first_name, user.username
+                
+                # Insert or update loyal fan record
+                now = datetime.datetime.now()
+                existing_loyal_fan = LoyalFan.query.filter_by(user_id=user_id).first()
+                
+                if existing_loyal_fan:
+                    existing_loyal_fan.reason = reason
+                    existing_loyal_fan.date_marked = now
+                else:
+                    new_loyal_fan = LoyalFan(user_id=user_id, reason=reason, date_marked=now)
+                    db.session.add(new_loyal_fan)
+                
+                db.session.commit()
+                
+                success_text = f"""
 ✅ <b>LOYAL FAN MARKED SUCCESSFULLY!</b> ✅
 
 👤 <b>User:</b> {first_name} (@{username or 'none'})
@@ -6319,17 +6317,15 @@ def handle_loyal_fan_reason_input(message):
 • Track your most valuable customers  
 • Quick recognition of top supporters
 """
-            
-            markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("⭐ Mark Another Fan", callback_data="mark_loyal_fan"))
-            markup.add(types.InlineKeyboardButton("📋 View All Loyal Fans", callback_data="list_loyal_fans"))
-            markup.add(types.InlineKeyboardButton("🔙 Back to Management", callback_data="loyal_fan_management_menu"))
-            
-            bot.send_message(message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
-        else:
-            bot.send_message(message.chat.id, "❌ User not found in database.")
-        
-        conn.close()
+                
+                markup = types.InlineKeyboardMarkup()
+                markup.add(types.InlineKeyboardButton("⭐ Mark Another Fan", callback_data="mark_loyal_fan"))
+                markup.add(types.InlineKeyboardButton("📋 View All Loyal Fans", callback_data="list_loyal_fans"))
+                markup.add(types.InlineKeyboardButton("🔙 Back to Management", callback_data="loyal_fan_management_menu"))
+                
+                bot.send_message(message.chat.id, success_text, reply_markup=markup, parse_mode='HTML')
+            else:
+                bot.send_message(message.chat.id, "❌ User not found in database.")
         
         # Clear the session
         if OWNERS[0] in upload_sessions:
