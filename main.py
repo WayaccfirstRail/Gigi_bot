@@ -146,6 +146,10 @@ else:
     # Create a dummy bot object for web-only mode - need valid format
     bot = telebot.TeleBot("12345:DUMMY_TOKEN_FOR_WEB_MODE")
 
+# Apply registration-time safety patching immediately after bot initialization
+# This must happen BEFORE any @bot.message_handler decorators are processed
+patch_telebot_registration()
+
 # Dictionary to store temporary upload data for guided content creation
 upload_sessions = {}
 
@@ -2158,7 +2162,7 @@ def help_command(message):
     add_or_update_user(message.from_user)
     
     help_text = """
-🔥💋 **Ready to turn up the heat? Gigi Torres** 
+🔥💋 **Ready to turn up the heat?** 
 
 **HOW TO INTERACT WITH THE BOT**
 
@@ -6606,9 +6610,6 @@ def run_bot():
                 except:
                     pass
             
-            # Apply registration-time safety patching
-            patch_telebot_registration()
-                
             with app.app_context():
                 bot.infinity_polling(
                     none_stop=True,
