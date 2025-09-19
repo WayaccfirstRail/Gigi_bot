@@ -589,51 +589,33 @@ Step into my world and Browse the exclusive content you’ve been craving.
 
 def show_analytics_dashboard(chat_id):
     """Show comprehensive analytics dashboard"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    # Get user statistics
-    cursor.execute('SELECT COUNT(*) FROM users')
-    total_users = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM users WHERE last_interaction >= ?', ((datetime.datetime.now() - datetime.timedelta(days=7)).isoformat(),))
-    active_users_7d = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM users WHERE total_stars_spent > 0')
-    paying_users = cursor.fetchone()[0]
-    
-    # Get VIP statistics
-    cursor.execute('SELECT COUNT(*) FROM vip_subscriptions WHERE is_active = 1')
-    active_vips = cursor.fetchone()[0]
-    
-    # Get content statistics
-    cursor.execute('SELECT COUNT(*) FROM content_items WHERE content_type = ?', ('browse',))
-    browse_content_count = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM content_items WHERE content_type = ?', ('vip',))
-    vip_content_count = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT COUNT(*) FROM teasers')
-    teaser_count = cursor.fetchone()[0]
-    
-    # Get revenue statistics
-    cursor.execute('SELECT SUM(total_stars_spent) FROM users')
-    total_revenue = cursor.fetchone()[0] or 0
-    
-    cursor.execute('SELECT AVG(total_stars_spent) FROM users WHERE total_stars_spent > 0')
-    avg_spent = cursor.fetchone()[0] or 0
-    
-    # Get top customers
-    cursor.execute('''
-        SELECT first_name, username, total_stars_spent, interaction_count
-        FROM users 
-        WHERE total_stars_spent > 0 
-        ORDER BY total_stars_spent DESC 
-        LIMIT 5
-    ''')
-    top_customers = cursor.fetchall()
-    
-    conn.close()
+    with app.app_context():
+        from sqlalchemy import func
+        from datetime import timedelta
+        
+        # Get user statistics
+        total_users = User.query.count()
+        
+        week_ago = datetime.datetime.now() - timedelta(days=7)
+        active_users_7d = User.query.filter(User.last_interaction >= week_ago).count()
+        
+        paying_users = User.query.filter(User.total_stars_spent > 0).count()
+        
+        # Get VIP statistics
+        active_vips = VipSubscription.query.filter_by(is_active=True).count()
+        
+        # Get content statistics
+        browse_content_count = ContentItem.query.filter_by(content_type='browse').count()
+        vip_content_count = ContentItem.query.filter_by(content_type='vip').count()
+        teaser_count = Teaser.query.count()
+        
+        # Get revenue statistics
+        total_revenue = db.session.query(func.sum(User.total_stars_spent)).scalar() or 0
+        avg_spent = db.session.query(func.avg(User.total_stars_spent)).filter(User.total_stars_spent > 0).scalar() or 0
+        
+        # Get top customers
+        top_customers_query = User.query.filter(User.total_stars_spent > 0).order_by(User.total_stars_spent.desc()).limit(5).all()
+        top_customers = [(u.first_name, u.username, u.total_stars_spent, u.interaction_count) for u in top_customers_query]
     
     analytics_text = f"""📊 <b>ANALYTICS DASHBOARD</b> 📊
 
@@ -672,77 +654,61 @@ def show_analytics_dashboard(chat_id):
 
 def get_ai_response(message_text):
     """Get response based on message content"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    
-    message_lower = message_text.lower()
-    
-    # Determine response type based on keywords
-    if any(word in message_lower for word in ['hi', 'hello', 'hey', 'good morning', 'good evening']):
-        response_key = 'greeting'
-    elif any(word in message_lower for word in ['beautiful', 'gorgeous', 'amazing', 'love', 'perfect']):
-        response_key = 'compliment'
-    elif '?' in message_text:
-        response_key = 'question'
-    else:
-        response_key = 'default'
-    
-    cursor.execute('SELECT text FROM responses WHERE key = ?', (response_key,))
-    result = cursor.fetchone()
-    
-    if result:
-        response = result[0]
-    else:
-        response = "Thanks for the message! 😊"
-    
-    conn.close()
-    return response
+    with app.app_context():
+        message_lower = message_text.lower()
+        
+        # Determine response type based on keywords
+        if any(word in message_lower for word in ['hi', 'hello', 'hey', 'good morning', 'good evening']):
+            response_key = 'greeting'
+        elif any(word in message_lower for word in ['beautiful', 'gorgeous', 'amazing', 'love', 'perfect']):
+            response_key = 'compliment'
+        elif '?' in message_text:
+            response_key = 'question'
+        else:
+            response_key = 'default'
+        
+        response_obj = Response.query.filter_by(key=response_key).first()
+        
+        if response_obj:
+            response = response_obj.text
+        else:
+            response = "Thanks for the message! 😊"
+        
+        return response
 
 def get_teasers():
     """Get all regular (non-VIP) teasers from database"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, file_type, description FROM teasers WHERE vip_only = 0 ORDER BY created_date DESC')
-    teasers = cursor.fetchall()
-    conn.close()
-    return teasers
+    with app.app_context():
+        teasers = Teaser.query.filter_by(vip_only=False).order_by(Teaser.created_date.desc()).all()
+        return [(t.file_path, t.file_type, t.description) for t in teasers]
 
 def get_teasers_with_id():
     """Get all regular (non-VIP) teasers with IDs for management"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, file_path, file_type, description, created_date FROM teasers WHERE vip_only = 0 ORDER BY created_date DESC')
-    teasers = cursor.fetchall()
-    conn.close()
-    return teasers
+    with app.app_context():
+        teasers = Teaser.query.filter_by(vip_only=False).order_by(Teaser.created_date.desc()).all()
+        return [(t.id, t.file_path, t.file_type, t.description, t.created_date) for t in teasers]
 
 def get_vip_teasers():
     """Get all VIP-only teasers from database"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT file_path, file_type, description FROM teasers WHERE vip_only = 1 ORDER BY created_date DESC')
-    teasers = cursor.fetchall()
-    conn.close()
-    return teasers
+    with app.app_context():
+        teasers = Teaser.query.filter_by(vip_only=True).order_by(Teaser.created_date.desc()).all()
+        return [(t.file_path, t.file_type, t.description) for t in teasers]
 
 def get_vip_teasers_with_id():
     """Get all VIP-only teasers with IDs for management"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, file_path, file_type, description, created_date FROM teasers WHERE vip_only = 1 ORDER BY created_date DESC')
-    teasers = cursor.fetchall()
-    conn.close()
-    return teasers
+    with app.app_context():
+        teasers = Teaser.query.filter_by(vip_only=True).order_by(Teaser.created_date.desc()).all()
+        return [(t.id, t.file_path, t.file_type, t.description, t.created_date) for t in teasers]
 
 def delete_teaser(teaser_id):
     """Delete a teaser by ID"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM teasers WHERE id = ?', (teaser_id,))
-    deleted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return deleted_count > 0
+    with app.app_context():
+        teaser = Teaser.query.filter_by(id=teaser_id).first()
+        if teaser:
+            db.session.delete(teaser)
+            db.session.commit()
+            return True
+        return False
 
 def add_teaser(file_path, file_type, description, vip_only=False):
     """Add a teaser to the database"""
@@ -1087,37 +1053,28 @@ def complete_vip_upload_with_defaults(session):
 
 def get_vip_content_count():
     """Get count of VIP-only content"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) FROM content_items WHERE content_type = ?', ('vip',))
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with app.app_context():
+        return ContentItem.query.filter_by(content_type='vip').count()
 
 def get_vip_content_list():
     """Get all VIP-only content with details"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT name, price_stars, file_path, description, created_date
-        FROM content_items 
-        WHERE content_type = ? 
-        ORDER BY created_date DESC
-    ''', ('vip',))
-    vip_content = cursor.fetchall()
-    conn.close()
-    return vip_content
+    with app.app_context():
+        content_items = ContentItem.query.filter_by(content_type='vip').order_by(ContentItem.created_date.desc()).all()
+        return [(c.name, c.price_stars, c.file_path, c.description, c.created_date) for c in content_items]
 
 def add_vip_content(name, price_stars, file_path, description):
     """Add new VIP-only content"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO content_items (name, price_stars, file_path, description, created_date, content_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (name, price_stars, file_path, description, datetime.datetime.now().isoformat(), 'vip'))
-    conn.commit()
-    conn.close()
+    with app.app_context():
+        new_content = ContentItem(
+            name=name,
+            price_stars=price_stars,
+            file_path=file_path,
+            description=description,
+            created_date=datetime.datetime.now(),
+            content_type='vip'
+        )
+        db.session.add(new_content)
+        db.session.commit()
 
 def update_vip_content(name, price_stars, file_path, description):
     """Update existing VIP content"""
@@ -1135,26 +1092,21 @@ def update_vip_content(name, price_stars, file_path, description):
 
 def delete_vip_content(name):
     """Delete VIP content by name"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM content_items WHERE name = ? AND content_type = ?', (name, 'vip'))
-    deleted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return deleted_count > 0
+    with app.app_context():
+        content = ContentItem.query.filter_by(name=name, content_type='vip').first()
+        if content:
+            db.session.delete(content)
+            db.session.commit()
+            return True
+        return False
 
 def get_vip_content_by_name(name):
     """Get specific VIP content by name"""
-    conn = sqlite3.connect('content_bot.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT name, price_stars, file_path, description, created_date
-        FROM content_items 
-        WHERE name = ? AND content_type = ?
-    ''', (name, 'vip'))
-    content = cursor.fetchone()
-    conn.close()
-    return content
+    with app.app_context():
+        content = ContentItem.query.filter_by(name=name, content_type='vip').first()
+        if content:
+            return (content.name, content.price_stars, content.file_path, content.description, content.created_date)
+        return None
 
 # VIP Management Functions
 

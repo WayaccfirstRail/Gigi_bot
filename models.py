@@ -1,12 +1,12 @@
 from app import db
 from sqlalchemy.sql import func
-from sqlalchemy import Integer, String, Text, DateTime, Boolean
+from sqlalchemy import Integer, BigInteger, String, Text, DateTime, Boolean
 
 
 class User(db.Model):
     __tablename__ = 'users'
     
-    user_id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(BigInteger, primary_key=True)
     username = db.Column(String(64), nullable=True)
     first_name = db.Column(String(120), nullable=True)
     join_date = db.Column(DateTime, default=func.now())
@@ -24,7 +24,7 @@ class User(db.Model):
 class LoyalFan(db.Model):
     __tablename__ = 'loyal_fans'
     
-    user_id = db.Column(Integer, db.ForeignKey('users.user_id'), primary_key=True)
+    user_id = db.Column(BigInteger, db.ForeignKey('users.user_id'), primary_key=True)
     reason = db.Column(Text, nullable=True)
     date_marked = db.Column(DateTime, default=func.now())
 
@@ -54,7 +54,7 @@ class UserPurchase(db.Model):
     __tablename__ = 'user_purchases'
     
     id = db.Column(Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(Integer, db.ForeignKey('users.user_id'), nullable=False)
+    user_id = db.Column(BigInteger, db.ForeignKey('users.user_id'), nullable=False)
     content_name = db.Column(String(200), db.ForeignKey('content_items.name'), nullable=False)
     purchase_date = db.Column(DateTime, default=func.now())
     price_paid = db.Column(Integer, nullable=False)
@@ -75,7 +75,7 @@ class UserBackup(db.Model):
     __tablename__ = 'user_backups'
     
     id = db.Column(Integer, primary_key=True, autoincrement=True)
-    user_id = db.Column(Integer, db.ForeignKey('users.user_id'), nullable=False)
+    user_id = db.Column(BigInteger, db.ForeignKey('users.user_id'), nullable=False)
     username = db.Column(String(64), nullable=True)
     first_name = db.Column(String(120), nullable=True)
     join_date = db.Column(DateTime, nullable=True)
@@ -88,7 +88,7 @@ class UserBackup(db.Model):
 class VipSubscription(db.Model):
     __tablename__ = 'vip_subscriptions'
     
-    user_id = db.Column(Integer, db.ForeignKey('users.user_id'), primary_key=True)
+    user_id = db.Column(BigInteger, db.ForeignKey('users.user_id'), primary_key=True)
     start_date = db.Column(DateTime, default=func.now())
     expiry_date = db.Column(DateTime, nullable=False)
     is_active = db.Column(Boolean, default=True)
