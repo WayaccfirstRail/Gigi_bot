@@ -45,6 +45,20 @@ def safe_handler(fn):
                 return fn(*args, **kwargs)
             with app.app_context():
                 return fn(*args, **kwargs)
+        except NameError as e:
+            if 'sqlite3' in str(e):
+                logger.error(f"Handler {fn.__name__} hit SQLite NameError: {e} - feature temporarily disabled during migration")
+                # Send specific message for SQLite migration issues
+                try:
+                    if args and hasattr(args[0], 'chat'):
+                        bot.send_message(args[0].chat.id, "🔧 This feature is temporarily unavailable during system updates. Please try again later.")
+                    elif args and hasattr(args[0], 'message') and hasattr(args[0].message, 'chat'):
+                        bot.send_message(args[0].message.chat.id, "🔧 This feature is temporarily unavailable during system updates. Please try again later.")
+                except:
+                    pass
+                return None
+            else:
+                raise
         except Exception as e:
             logger.error(f"Handler {fn.__name__} crashed: {e}")
             # Try to send error message to user if possible
