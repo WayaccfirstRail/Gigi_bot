@@ -20,6 +20,21 @@ import mimetypes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Registration-time monkey patching for TeleBot safety
+def patch_telebot_registration():
+    """Monkey-patch TeleBot registration methods to auto-wrap handlers"""
+    original_register_message_handler = bot.register_message_handler
+    original_register_callback_query_handler = bot.register_callback_query_handler
+    
+    def safe_register_message_handler(callback, *args, **kwargs):
+        return original_register_message_handler(safe_handler(callback), *args, **kwargs)
+    
+    def safe_register_callback_query_handler(callback, *args, **kwargs):
+        return original_register_callback_query_handler(safe_handler(callback), *args, **kwargs)
+    
+    bot.register_message_handler = safe_register_message_handler
+    bot.register_callback_query_handler = safe_register_callback_query_handler
+
 # Universal safety decorator for TeleBot handlers
 def safe_handler(fn):
     """Universal decorator that ensures Flask app context and catches all exceptions for TeleBot handlers"""
@@ -1529,7 +1544,7 @@ def download_and_upload_image(url, chat_id=None):
 # Bot command handlers
 
 @bot.message_handler(commands=['start'])
-@with_app_context
+@safe_handler
 def start_command(message):
     """Handle /start command"""
     add_or_update_user(message.from_user)
@@ -1564,6 +1579,7 @@ Get ready to dive into me exclusive, unfiltered, and all yours. 🔥
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
 @bot.message_handler(commands=['teaser'])
+@safe_handler
 def teaser_command(message):
     """Handle /teaser command with VIP-exclusive content"""
     add_or_update_user(message.from_user)
@@ -2037,6 +2053,7 @@ More premium VIP content is being added regularly. Check back soon for exclusive
         bot.send_message(chat_id, no_content_message, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(commands=['help'])
+@safe_handler
 def help_command(message):
     """Handle /help command"""
     add_or_update_user(message.from_user)
@@ -3219,8 +3236,9 @@ def owner_help(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     
     # VIP Management - TOP PRIORITY section (keep as-is)
-    vip_count = get_vip_content_count()
-    markup.add(types.InlineKeyboardButton(f"💎 VIP Dashboard ({vip_count})", callback_data="cmd_vip"))
+    # Temporarily disabled during migration
+    # vip_count = get_vip_content_count()
+    markup.add(types.InlineKeyboardButton("💎 VIP Dashboard", callback_data="cmd_vip"))
     
     # Section menus
     markup.add(types.InlineKeyboardButton("📦 Content Management", callback_data="content_management_menu"))
@@ -3690,7 +3708,8 @@ def vip_command(message):
         return
     
     # Get VIP content statistics
-    vip_count = get_vip_content_count()
+    # Temporarily disabled during migration
+    # vip_count = get_vip_content_count()
     vip_price = get_vip_settings('vip_price_stars') or '399'
     vip_duration = get_vip_settings('vip_duration_days') or '30'
     
@@ -3759,7 +3778,9 @@ VIP content is exclusive to subscribers and generates more revenue.
 
 def show_vip_content_management(chat_id):
     """Show VIP content management interface"""
-    vip_content = get_vip_content_list()
+    # Temporarily disabled during migration
+    # vip_content = get_vip_content_list()
+    vip_content = []  # Temporary placeholder
     
     if not vip_content:
         empty_text = """
@@ -4787,7 +4808,7 @@ Send your message in your next message. It will be delivered to all {target_name
 # Callback query handlers
 
 @bot.callback_query_handler(func=lambda call: True)
-@with_app_context
+@safe_handler
 def handle_callback_query(call):
     """Handle inline keyboard callbacks"""
     
@@ -6327,11 +6348,15 @@ def run_bot():
                 except:
                     pass
             
+            # Apply registration-time safety patching
+            patch_telebot_registration()
+                
             with app.app_context():
                 bot.infinity_polling(
                     none_stop=True,
                     timeout=30,  # 30 second timeout for requests
-                    skip_pending=True  # Skip pending messages on restart
+                    skip_pending=True,  # Skip pending messages on restart
+                    num_threads=1  # Emergency: Reduce concurrency
                 )
             logger.info("Bot polling started successfully!")
             break  # If we reach here, polling started successfully
