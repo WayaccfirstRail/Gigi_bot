@@ -2775,37 +2775,30 @@ def handle_vip_teaser_upload(message):
             session['file_type'] = 'video'
         
         if file_id and file_type:
-            # Store file info and move to description step
+            # Store file info and move to name input step
             session['file_path'] = file_id
-            session['step'] = 'waiting_for_description'
+            session['step'] = 'waiting_for_name'
             
-            # Generate default name with timestamp
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            default_name = f"vip_{file_type}_{timestamp}"
-            session['name'] = default_name
-            
-            desc_text = f"""
+            name_text = f"""
 ✅ <b>VIP TEASER FILE RECEIVED!</b> ✅
 
 📱 <b>File Type:</b> {file_type.title()}
-🎯 <b>Default Name:</b> {default_name}
 
-📤 <b>Step 2: Description</b>
-Now send me a description for this VIP teaser (optional).
+📤 <b>Step 2: Name Your VIP Teaser</b>
+What would you like to call this VIP teaser?
 
-💡 <b>Description Tips:</b>
-• Make it exclusive and enticing for VIP members
-• Use personal language ("Just for my VIPs...")
-• Keep it engaging but not too long
+💡 <b>Naming Tips:</b>
+• Use descriptive names like "Beach Sunset Photos"
+• Spaces, capital letters, and numbers are allowed
+• Keep it clear and memorable for you
 
-📝 Send your description or click "Skip" to use no description.
+✏️ Type the name for your VIP teaser:
 """
             
             markup = types.InlineKeyboardMarkup()
-            markup.add(types.InlineKeyboardButton("⏭ Skip Description", callback_data="skip_vip_teaser_description"))
             markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="vip_teasers_management"))
             
-            bot.send_message(message.chat.id, desc_text, reply_markup=markup, parse_mode='HTML')
+            bot.send_message(message.chat.id, name_text, reply_markup=markup, parse_mode='HTML')
         else:
             bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
