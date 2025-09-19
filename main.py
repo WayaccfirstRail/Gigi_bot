@@ -2859,10 +2859,10 @@ def handle_vip_teaser_edit_upload(message):
     else:
         bot.send_message(message.chat.id, "❌ Please send a photo or video file for the VIP teaser.")
 
-@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_file')
+@bot.message_handler(content_types=['photo', 'video', 'document', 'animation'], func=lambda message: message.from_user.id == OWNER_ID and OWNERS[0] in upload_sessions and upload_sessions[OWNERS[0]].get('type') == 'teaser' and upload_sessions[OWNERS[0]].get('step') == 'waiting_for_file')
 def handle_teaser_upload(message):
     """Handle teaser file upload from owner"""
-    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNER_ID, 'None')}")
+    logger.info(f"Teaser handler triggered - Content type: {message.content_type}, Session: {upload_sessions.get(OWNERS[0], 'None')}")
     session = upload_sessions[OWNERS[0]]
     
     if session['step'] == 'waiting_for_file':
@@ -2997,7 +2997,7 @@ def handle_vip_teaser_description(message):
     if teaser_key in upload_sessions:
         del upload_sessions[teaser_key]
 
-@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNER_ID in upload_sessions and upload_sessions[OWNER_ID].get('type') == 'teaser' and upload_sessions[OWNER_ID].get('step') == 'waiting_for_description')
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and OWNERS[0] in upload_sessions and upload_sessions[OWNERS[0]].get('type') == 'teaser' and upload_sessions[OWNERS[0]].get('step') == 'waiting_for_description')
 def handle_teaser_description(message):
     """Handle teaser description from owner"""
     session = upload_sessions[OWNERS[0]]
@@ -3039,7 +3039,7 @@ def handle_teaser_description(message):
         bot.send_message(OWNER_ID, f"❌ Error saving teaser: {str(e)}")
     
     # Clear upload session
-    if OWNER_ID in upload_sessions:
+    if OWNERS[0] in upload_sessions:
         del upload_sessions[OWNERS[0]]
 
 @bot.message_handler(commands=['owner_list_teasers'])
@@ -3898,7 +3898,17 @@ Add your first VIP content to start earning premium subscription revenue.
     for i, (name, price, file_path, description, created_date) in enumerate(vip_content[:10]):
         # Format creation date
         try:
-            date_obj = datetime.datetime.fromisoformat(created_date)
+            # Handle both datetime objects and string timestamps
+            if isinstance(created_date, datetime.datetime):
+                date_obj = created_date
+            elif isinstance(created_date, str):
+                # Try different timestamp formats
+                try:
+                    date_obj = datetime.datetime.fromisoformat(created_date.replace('T', ' ').split('.')[0])
+                except:
+                    date_obj = datetime.datetime.strptime(created_date.split('.')[0], "%Y-%m-%d %H:%M:%S")
+            else:
+                raise ValueError("Invalid date format")
             formatted_date = date_obj.strftime("%b %d")
         except:
             formatted_date = "N/A"
@@ -4669,9 +4679,13 @@ def show_mark_loyal_fan_interface(chat_id):
         empty_text = """
 ⭐ <b>MARK LOYAL FAN</b> ⭐
 
-📭 <b>All users are already marked as loyal fans!</b>
+📭 <b>No users available to mark as loyal fans!</b>
 
-Or no users found in database yet.
+This happens when:
+• No users have interacted with your bot yet
+• All existing users are already marked as loyal fans
+
+💡 <b>Tip:</b> Users will appear here after they start chatting with your bot or make purchases.
 """
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔙 Back to Loyal Fan Management", callback_data="loyal_fan_management_menu"))
