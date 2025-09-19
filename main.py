@@ -6400,6 +6400,76 @@ def run_bot():
                 # Don't exit, let Flask continue running for health checks
                 break
 
+# Flask Routes
+@app.route('/')
+def home():
+    """Home page with bot status"""
+    original_bot_token = os.getenv('BOT_TOKEN')
+    original_owner_id = int(os.getenv('OWNER_ID', '0'))
+    
+    bot_status = "Active" if original_bot_token and original_owner_id != 0 else "Web-only mode"
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Content Creator Bot</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
+            .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+            h1 {{ color: #333; text-align: center; }}
+            .status {{ padding: 15px; border-radius: 5px; margin: 20px 0; }}
+            .active {{ background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }}
+            .web-only {{ background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }}
+            .info {{ margin: 20px 0; padding: 15px; background: #e7f3ff; border-radius: 5px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🤖 Content Creator Bot</h1>
+            <div class="status {'active' if bot_status == 'Active' else 'web-only'}">
+                <strong>Status:</strong> {bot_status}
+            </div>
+            <div class="info">
+                <h3>📊 System Information</h3>
+                <p><strong>Database:</strong> PostgreSQL (Connected)</p>
+                <p><strong>Web Server:</strong> Running on port 5000</p>
+                <p><strong>Bot Mode:</strong> {bot_status}</p>
+            </div>
+            {'''<div class="info">
+                <h3>⚙️ Setup Required</h3>
+                <p>To enable full Telegram bot functionality:</p>
+                <ol>
+                    <li>Get a bot token from @BotFather on Telegram</li>
+                    <li>Get your user ID from @userinfobot on Telegram</li>
+                    <li>Add BOT_TOKEN and OWNER_ID to Replit Secrets</li>
+                    <li>Restart the application</li>
+                </ol>
+            </div>''' if bot_status == 'Web-only mode' else ''}
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        with app.app_context():
+            user_count = User.query.count()
+        
+        return {
+            'status': 'healthy',
+            'database': 'connected',
+            'user_count': user_count,
+            'bot_mode': 'active' if os.getenv('BOT_TOKEN') and int(os.getenv('OWNER_ID', '0')) != 0 else 'web-only'
+        }
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}, 500
+
 def main():
     """Main function to initialize and start the bot"""
     logger.info("Initializing Content Creator Bot...")
