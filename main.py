@@ -912,9 +912,9 @@ def handle_vip_name_input(message):
     session = upload_sessions[OWNER_ID]
     name = message.text.strip()
     
-    # Validate name - allow spaces, letters, numbers but no underscores
-    if not name or not name.strip() or not all(c.isalnum() or c == ' ' for c in name):
-        bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: My Beach Photos 2024")
+    # Basic validation - just check if name is not empty
+    if not name or not name.strip():
+        bot.send_message(message.chat.id, "❌ Please provide a name for your content.")
         return
     
     # Check if name already exists
@@ -2527,10 +2527,10 @@ def handle_upload_flow(message):
     # Regular upload flow continues below
     
     if session['step'] == 'waiting_for_name':
-        # Validate name - allow spaces, letters, numbers but no underscores
+        # Basic validation - just check if name is not empty
         name = message.text.strip()
-        if not name or not all(c.isalnum() or c == ' ' for c in name):
-            bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: Beach Photos Set 1")
+        if not name:
+            bot.send_message(message.chat.id, "❌ Please provide a name for your content.")
             return
         
         # Check if name already exists
@@ -2999,9 +2999,9 @@ def handle_vip_teaser_name(message):
     session = upload_sessions[teaser_key]
     name = message.text.strip()
     
-    # Validate name - allow spaces, letters, numbers but no underscores
-    if not name or not all(c.isalnum() or c == ' ' for c in name):
-        bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: Beach Sunset VIP")
+    # Basic validation - just check if name is not empty  
+    if not name:
+        bot.send_message(message.chat.id, "❌ Please provide a name for your VIP teaser.")
         return
     
     # Store teaser title for display only (not saved to database)
