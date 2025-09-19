@@ -882,9 +882,9 @@ def handle_vip_name_input(message):
     session = upload_sessions[OWNERS[0]]
     name = message.text.strip()
     
-    # Validate name
-    if not name or ' ' in name or not all(c.isalnum() or c == '_' for c in name):
-        bot.send_message(message.chat.id, "❌ Invalid name! Use only letters, numbers, and underscores (no spaces).\nExample: my_vip_content_1")
+    # Validate name - allow spaces, letters, numbers but no underscores
+    if not name or not name.strip() or not all(c.isalnum() or c == ' ' for c in name):
+        bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: My Beach Photos 2024")
         return
     
     # Check if name already exists
@@ -2943,6 +2943,42 @@ def handle_vip_name_message(message):
 def handle_vip_description_message(message):
     """Handle VIP content description input from message"""
     handle_vip_description_input(message)
+
+@bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_name')
+def handle_vip_teaser_name(message):
+    """Handle VIP teaser name input from owner"""
+    teaser_key = f"{OWNER_ID}_vip_teaser"
+    session = upload_sessions[teaser_key]
+    name = message.text.strip()
+    
+    # Validate name - allow spaces, letters, numbers but no underscores
+    if not name or not all(c.isalnum() or c == ' ' for c in name):
+        bot.send_message(message.chat.id, "❌ Invalid name! Use letters, numbers, and spaces only.\nExample: Beach Sunset VIP")
+        return
+    
+    # Store name and move to description step
+    session['name'] = name
+    session['step'] = 'waiting_for_description'
+    
+    desc_text = f"""
+✅ <b>VIP Teaser Name Set:</b> {name}
+
+📝 <b>Step 3: Description (Optional)</b>
+Now add a description for this VIP teaser:
+
+💡 <b>Description Tips:</b>
+• Make it exclusive and enticing for VIP members
+• Use personal language ("Just for my VIPs...")
+• Keep it engaging but not too long
+
+✍️ Send your description or click "Skip" to use no description:
+"""
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("⏭ Skip Description", callback_data="skip_vip_teaser_description"))
+    markup.add(types.InlineKeyboardButton("❌ Cancel", callback_data="vip_teasers_management"))
+    
+    bot.send_message(message.chat.id, desc_text, reply_markup=markup, parse_mode='HTML')
 
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and f"{OWNER_ID}_vip_teaser" in upload_sessions and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('type') == 'vip_teaser' and upload_sessions[f"{OWNER_ID}_vip_teaser"].get('step') == 'waiting_for_description')
 def handle_vip_teaser_description(message):
