@@ -6367,15 +6367,27 @@ def handle_loyal_fan_reason_input(message):
 
 def clear_webhook_and_polling():
     """Clear any existing webhook and stop other polling instances"""
+    import time
     try:
         logger.info("Clearing any existing webhook...")
         # Clear webhook to stop webhook mode and drop pending updates
         bot.remove_webhook()
         logger.info("Webhook cleared successfully with pending updates dropped")
         
-        # Short delay to ensure cleanup
-        import time
-        time.sleep(3)
+        # Wait longer to allow any existing polling instances to timeout
+        logger.info("Waiting 10 seconds for any existing bot instances to timeout...")
+        time.sleep(10)
+        
+        # Try to make a test request to clear any remaining state
+        try:
+            bot.get_me()
+            logger.info("Bot connection verified")
+        except Exception as test_e:
+            if "409" in str(test_e):
+                logger.warning("409 conflict detected during test - waiting additional 15 seconds...")
+                time.sleep(15)
+            else:
+                logger.warning(f"Bot test request failed: {test_e}")
         
     except Exception as e:
         logger.warning(f"Error clearing webhook (this is usually fine): {e}")
@@ -6421,11 +6433,20 @@ def run_bot():
             
             # Special handling for 409 conflicts
             if "409" in error_str and "getUpdates" in error_str:
-                logger.info("Detected getUpdates conflict, waiting longer before retry...")
+                logger.info("Detected 409 getUpdates conflict - another bot instance is running!")
                 if attempt < max_retries - 1:
-                    longer_delay = retry_delay * 2
-                    logger.info(f"Waiting {longer_delay} seconds for other instances to timeout...")
+                    # Be more aggressive for 409 conflicts
+                    longer_delay = 30 + (attempt * 10)  # 30, 40, 50, 60 seconds
+                    logger.info(f"Waiting {longer_delay} seconds for other bot instance to timeout...")
                     time.sleep(longer_delay)
+                    
+                    # Try to clear webhook again after waiting
+                    try:
+                        logger.info("Attempting to clear webhook again after 409 conflict...")
+                        bot.remove_webhook()
+                        time.sleep(5)
+                    except:
+                        pass
             
             if attempt < max_retries - 1:
                 logger.info(f"Retrying in {retry_delay} seconds...")
