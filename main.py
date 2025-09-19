@@ -3,7 +3,7 @@ import threading
 import datetime
 import telebot
 from telebot import types
-from flask import render_template_string, has_app_context, Response, jsonify
+from flask import render_template_string, has_app_context, make_response, jsonify
 from app import app, db
 from models import *
 from sqlalchemy import and_, func, or_, case
@@ -6429,7 +6429,7 @@ def home():
     </body>
     </html>
     """
-    response = Response(html)
+    response = make_response(html)
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
