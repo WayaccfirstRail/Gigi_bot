@@ -9,7 +9,7 @@ The bot provides a dual interface: fans can browse teasers, purchase content wit
 **September 19, 2025 - Fresh GitHub Import Successfully Completed ✅ (FINAL)**
 - ✅ **PROJECT IMPORT**: Fresh GitHub clone successfully imported and configured for Replit environment
 - ✅ **DEPENDENCIES**: All Python dependencies installed from pyproject.toml using uv sync (pytelegrambotapi, flask, sqlalchemy, etc.)
-- ✅ **DATABASE**: PostgreSQL database created, connected, and all 10 tables initialized successfully
+- ✅ **DATABASE**: SQLite database created, connected, and all 10 tables initialized successfully (migration to PostgreSQL planned for production scaling)
   - Tables: users, content_items, user_purchases, vip_subscriptions, vip_settings, responses, scheduled_posts, teasers, loyal_fans, user_backups
   - Database connection verified and all tables created automatically
 - ✅ **WEB SERVER**: Flask application running on 0.0.0.0:5000 with webview output for user preview
@@ -54,7 +54,8 @@ Preferred communication style: Simple, everyday language.
 - **Environment Variables**: Secure storage of BOT_TOKEN and OWNER_ID through Replit Secrets
 
 ## Data Layer
-- **PostgreSQL Database**: Production-ready relational database with Flask-SQLAlchemy ORM
+- **SQLite Database (Current)**: Local database with Flask-SQLAlchemy ORM for single-instance operation
+- **PostgreSQL Database (Planned)**: Production-ready relational database for multi-instance scaling
 - **Database Schema Design**:
   - Users table: Tracks fan demographics, spending history, and engagement metrics
   - Content items table: Stores purchasable content with pricing and file references
@@ -273,6 +274,154 @@ Preferred communication style: Simple, everyday language.
   - Automatic redaction of secrets, tokens, and signed URLs from all log files
   - Sensitive data masking in error messages and debug information
 
+# Performance and Scalability Requirements
+
+## User Scalability
+- **Current Architecture (SQLite + Threading)**: Realistic concurrency limits
+  - Minimum 20 concurrent users without performance degradation
+  - Target capacity of 50 simultaneous bot interactions with polling
+  - Graceful handling of traffic spikes up to 150% of normal load
+  - User session isolation through thread-safe database operations
+- **Future Architecture (PostgreSQL + Webhooks)**: Enhanced scalability targets
+  - Migration to webhook-based bot handling for improved concurrency
+  - PostgreSQL database for multi-instance deployment support
+  - Target capacity of 500+ simultaneous bot interactions with webhook architecture
+
+## Response Time Requirements
+- **Bot Command Performance**: Fast interaction response times
+  - Standard commands (start, help, buy): Maximum 2 seconds response time
+  - Content browsing and catalog display: Maximum 3 seconds response time
+  - Payment processing initiation: Maximum 5 seconds response time
+  - File upload/download operations: Maximum 30 seconds for completion
+- **Telegram-Specific SLAs**: Platform compliance requirements
+  - Pre-checkout query responses: Maximum 2 seconds (hard limit 10 seconds)
+  - Successful payment callbacks: Maximum 2 seconds response time
+  - Webhook handler responses: Maximum 1 second (when webhooks implemented)
+  - Bot API rate limit compliance: Maximum 30 messages per second total per bot
+  - Per-chat rate limiting: Maximum 1 message per second per individual chat
+  - Group chat limits: Maximum 20 messages per minute in group chats
+  - Message queue management: Exponential backoff and jitter for rate limit violations
+- **Web Endpoint Performance**: Fast health check and admin interface
+  - Health endpoint (/health): Maximum 500ms response time
+  - Admin web interface: Maximum 2 seconds page load time
+  - Content preview endpoints: Maximum 3 seconds with caching
+
+## Content Handling Performance
+- **Current File Operations**: Platform-optimized approach
+  - Concurrent file downloads: Support up to 10 simultaneous downloads (tested target)
+  - Upload processing: Background processing for large files (>10MB)
+  - Content delivery via Telegram file_id system for scalability
+  - Thumbnail generation: Automatic optimization for preview content
+- **Storage Performance**: Conservative storage management
+  - Storage capacity planning: 10GB working target (validated through testing)
+  - File compression: Automatic optimization for storage efficiency
+  - Cleanup procedures: Automated removal of unused temporary files after 24 hours
+- **Future Enhancement Path**: External storage integration
+  - Object storage integration (S3/GCS) for larger capacity needs
+  - CDN integration for improved content delivery performance
+  - Migration to external file hosting for production scalability
+
+## Database Performance
+- **Current SQLite Performance**: Single-instance optimization
+  - User lookup queries: Maximum 100ms response time
+  - Content catalog queries: Maximum 200ms with pagination (limit 50 items)
+  - Analytics queries: Maximum 5 seconds for complex aggregations
+  - Payment transaction queries: Maximum 500ms for verification
+  - Database file size monitoring with 1GB practical limit
+- **Database Indexing**: Required indexes for performance
+  - Users table: Index on user_id, username, last_interaction
+  - ContentItem table: Index on name, content_type, created_date
+  - UserPurchase table: Index on user_id, content_name, purchase_date
+  - VipSubscription table: Index on user_id, is_active, expiry_date
+- **PostgreSQL Migration Path**: Production-ready scaling
+  - Per-instance connection pool: 5-15 connections (appropriate for single instance)
+  - Query result caching for frequently accessed data
+  - Automated database maintenance and VACUUM procedures
+
+## Caching Strategy
+- **Current In-Memory Caching**: Single-instance optimization
+  - Content metadata caching: Dictionary-based with 1-hour TTL
+  - User conversation state: Thread-safe in-memory storage
+  - Analytics data caching: 15-minute TTL for dashboard statistics
+  - VIP status caching: 5-minute TTL with invalidation on changes
+- **Future External Caching**: Multi-instance support
+  - Redis integration for shared cache across instances
+  - Session externalization for horizontal scaling
+  - Distributed cache invalidation strategies
+- **Content Delivery Caching**: Browser and proxy optimization
+  - Static asset caching: 24-hour browser caching headers
+  - Dynamic content caching: Short-term caching for user-specific lists
+  - Telegram file_id caching to reduce API calls
+
+## Resource Utilization
+- **Platform Resource Management**: Conservative resource utilization
+  - Maximum 256MB RAM usage during normal operation (conservative target)
+  - Memory leak prevention with regular garbage collection
+  - Background process memory limits to prevent system throttling
+- **CPU Performance**: Efficient processing within constraints
+  - CPU usage should not exceed 60% during peak operation
+  - Background tasks should use no more than 20% CPU capacity
+  - Efficient image processing with size/quality trade-offs
+- **Storage Management**: Platform-optimized storage
+  - Automated cleanup of temporary files older than 6 hours
+  - Log file rotation to prevent disk space exhaustion (conservative 100MB limit)
+  - Content archival strategy for files older than 30 days
+  - Primary content delivery through Telegram file_id to minimize local storage
+
+## Background Processing
+- **Current Threading Approach**: Single-instance async operations
+  - File upload processing: Thread-based background handling for large files
+  - Notification delivery: Threaded sending to prevent blocking main thread
+  - Analytics calculation: Scheduled background processing with threading.Timer
+  - Database maintenance: Periodic cleanup operations in separate threads
+- **Future Queue System**: Production-ready task processing
+  - Migration to Celery or RQ for reliable background processing
+  - Task retry mechanisms with exponential backoff
+  - Dead letter queues for failed operations
+  - Priority queuing for critical operations (payments, security alerts)
+  - Worker process limits: 2-4 workers for media processing operations
+
+## Load Balancing and Scaling
+- **Current Single-Instance Design**: SQLite + Threading Architecture
+  - SQLite-based single-instance operation with thread safety
+  - In-memory session state management
+  - Bot polling mechanism with threaded message processing
+  - Vertical scaling through resource optimization
+- **Future Multi-Instance Architecture**: Horizontal scaling preparation
+  - PostgreSQL migration for multi-instance database sharing
+  - External session storage (Redis) for stateless application design
+  - Load balancer configuration for multiple bot instances
+- **Traffic Management**: Conservative request handling
+  - Rate limiting per user: 10 commands per minute (token bucket implementation)
+  - Global rate limiting: 100 requests per minute total (tested conservative target)
+  - Per-chat message queuing with exponential backoff and jitter
+  - Priority handling for paying customers and VIP users
+- **Scaling Thresholds**: Conservative operational triggers
+  - CPU-based scaling consideration at 60% utilization
+  - Memory-based scaling consideration at 80% utilization (conservative 256MB target)
+  - Manual scaling decisions based on user growth and engagement patterns
+
+## Monitoring and Performance Metrics
+- **Performance Monitoring**: Realistic tracking for current platform
+  - Response time monitoring through Flask /health endpoint
+  - Resource utilization tracking via Replit system metrics
+  - Database performance monitoring with query timing logs
+  - Bot message processing rate tracking in application logs
+- **Load Testing Targets**: Concrete, testable performance goals
+  - Health endpoint: 100 requests/minute with <500ms response
+  - Bot command handling: 20 concurrent users with <3s response time
+  - Payment processing: 10 concurrent purchase attempts without failure
+  - File operations: 5 concurrent downloads with <30s completion time
+- **Capacity Planning**: Growth-aware monitoring
+  - User growth trend analysis through daily active user metrics
+  - Storage growth monitoring with 8GB warning threshold (10GB tested target)
+  - Database size monitoring with cleanup triggers at 800MB
+  - Performance baseline establishment using weekly averages
+- **Alerting Thresholds**: Practical operational alerts
+  - Response time degradation: >5s average for bot commands
+  - Resource exhaustion: >200MB RAM usage or >8GB storage
+  - Error rate monitoring: >5% failure rate for critical operations
+
 # External Dependencies
 
 ## Telegram API
@@ -283,7 +432,8 @@ Preferred communication style: Simple, everyday language.
 ## Python Libraries
 - **pyTelegramBotAPI (telebot)**: Primary bot framework for Telegram integration
 - **Flask**: Web server framework for Replit hosting compatibility
-- **PostgreSQL**: Production-ready relational database with Flask-SQLAlchemy ORM
+- **SQLite (Current)**: Local database for single-instance development and small-scale production
+- **PostgreSQL (Migration Target)**: Production-ready relational database with Flask-SQLAlchemy ORM
 - **threading**: Standard library for concurrent operation management
 - **datetime**: Time handling for scheduling and analytics
 - **logging**: Error tracking and debugging information
@@ -302,7 +452,7 @@ Preferred communication style: Simple, everyday language.
 
 ## Current Status
 ✅ **Web Server**: Ready and running - the Flask application is operational  
-✅ **Database**: SQLite database initialized and working  
+✅ **Database**: SQLite database initialized and working (PostgreSQL migration planned for scaling)  
 ✅ **Deployment**: Configured for production with Gunicorn  
 ⚠️ **Telegram Bot**: Requires credentials to be fully functional  
 
