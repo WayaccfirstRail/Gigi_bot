@@ -422,6 +422,159 @@ Preferred communication style: Simple, everyday language.
   - Resource exhaustion: >200MB RAM usage or >8GB storage
   - Error rate monitoring: >5% failure rate for critical operations
 
+# Testing Requirements and Quality Assurance
+
+## Unit Testing Requirements
+- **Core Component Testing**: Individual function and module verification
+  - User management functions: Registration, authentication, blocking/unblocking
+  - Content management: Upload, catalog, pricing, access control validation
+  - Payment processing: Invoice generation, validation, completion handling
+  - VIP subscription logic: Activation, expiration, status checking
+  - Database operations: CRUD operations, query optimization, transaction handling
+- **Test Coverage Standards**: Comprehensive code coverage expectations
+  - Minimum 80% code coverage for critical payment and security functions
+  - Minimum 70% overall code coverage across the entire application
+  - 100% coverage required for authentication and authorization functions
+  - Exception handling and error scenarios must have dedicated test cases
+
+## Integration Testing Requirements
+- **Database Integration**: Full database functionality validation
+  - SQLite database connection and transaction integrity testing
+  - Database schema validation and migration testing
+  - Concurrent access testing with threading simulation
+  - Data consistency verification across all database operations
+- **Telegram API Integration**: Bot functionality and API compliance
+  - Message sending and receiving with various content types
+  - Payment flow integration with Telegram Stars API testing
+  - Webhook handling simulation and response validation
+  - Rate limit compliance testing with mock API responses
+- **External Service Integration**: Third-party service connectivity
+  - File download and validation from external URLs
+  - Image processing and thumbnail generation testing
+  - Content delivery system integration verification
+
+## Security Testing Requirements
+- **Authentication and Authorization Testing**: Access control verification
+  - Owner authentication bypass attempt simulation
+  - User privilege escalation testing
+  - Token validation and expiration testing
+  - Session security and state manipulation testing
+- **Input Validation Testing**: Malicious input protection
+  - SQL injection attempt simulation across all database operations
+  - Cross-site scripting (XSS) prevention in user-generated content
+  - File upload security testing with malicious file types
+  - URL validation testing with SSRF attack simulation
+- **Payment Security Testing**: Financial transaction protection
+  - Payment fraud simulation and detection testing
+  - Duplicate payment prevention verification
+  - Payment callback authenticity validation
+  - Invoice tampering detection and prevention
+
+## Performance Testing Requirements
+- **Load Testing**: System capacity under normal conditions
+  - 20 concurrent users performing standard operations (current architecture)
+  - 50 simultaneous bot interactions with response time monitoring
+  - Database query performance under concurrent access scenarios
+  - File operation performance with multiple concurrent downloads
+- **Stress Testing**: System behavior under extreme conditions
+  - Traffic spike simulation (200% of normal load)
+  - Resource exhaustion testing (memory, storage, database connections)
+  - Recovery testing after system overload scenarios
+  - Graceful degradation validation under high load
+- **Telegram-Specific Performance Testing**: Platform compliance verification
+  - Pre-checkout query response time validation (must be under 2 seconds)
+  - Payment callback processing speed verification
+  - Rate limit compliance testing with message queue validation
+  - Bot command response time monitoring across different load levels
+
+## User Acceptance Testing (UAT)
+- **Core User Flows**: End-to-end user journey validation
+  - New user registration and first content purchase
+  - VIP subscription purchase and content access
+  - Content browsing, teaser viewing, and purchase decision flow
+  - Customer support interaction through blocking/unblocking system
+- **Owner Administrative Flows**: Content creator workflow validation
+  - Content upload, pricing, and catalog management
+  - User analytics and revenue tracking verification
+  - VIP member management and subscription monitoring
+  - Notification system testing with different user segments
+- **Payment Flow Testing**: Complete transaction verification
+  - End-to-end purchase flow from catalog to content delivery
+  - Payment failure handling and user communication
+  - Refund and dispute handling procedures (manual process testing)
+  - VIP subscription renewal and expiration notification testing
+
+## Regression Testing Requirements
+- **Critical Function Protection**: Ensure changes don't break core features
+  - Automated test suite execution before each deployment
+  - Payment system regression testing after any payment-related changes
+  - Security function testing after authentication or authorization changes
+  - Database migration testing with data integrity verification
+- **Feature Flag Testing**: Safe deployment of new features
+  - A/B testing framework for new feature rollouts
+  - Feature toggle validation and rollback procedures
+  - User experience consistency testing across feature variations
+
+## Automated Testing Framework
+- **Continuous Integration**: Automated testing pipeline
+  - Pre-commit hooks for code quality and basic unit tests
+  - Automated test execution on code repository changes
+  - Integration test execution in staging environment
+  - Performance benchmark testing with trend monitoring
+- **Test Environment Management**: Isolated testing environments
+  - Separate test database with known test data sets
+  - Mock Telegram API for deterministic testing
+  - Staging environment replicating production configuration
+  - Test data generation and cleanup automation
+
+## Security Audit and Penetration Testing
+- **Regular Security Assessments**: Proactive vulnerability identification
+  - Quarterly security audits by internal or external security teams
+  - Monthly dependency vulnerability scanning
+  - Semi-annual penetration testing focusing on payment and authentication systems
+  - Code security review for all payment and security-related changes
+- **Compliance Testing**: Regulatory and platform requirement verification
+  - Telegram Bot API compliance verification
+  - Data protection regulation compliance testing
+  - Payment processing compliance with Telegram Stars requirements
+
+## Quality Assurance Procedures
+- **Code Review Standards**: Peer review and quality control
+  - Mandatory code review for all changes by senior developer
+  - Security-focused review for authentication, payment, and data handling changes
+  - Performance impact assessment for database and API changes
+  - Documentation review for user-facing feature changes
+- **Release Testing Checklist**: Pre-deployment verification procedures
+  - Health endpoint functionality verification
+  - Database backup and recovery procedure testing
+  - Payment system end-to-end testing in staging environment
+  - User notification system functionality verification
+  - Performance baseline comparison with previous version
+
+## Monitoring and Alerting Testing
+- **Health Check Validation**: System monitoring verification
+  - Health endpoint response time and accuracy testing
+  - Database connection monitoring and alert testing
+  - Resource utilization monitoring and threshold alert validation
+  - Error rate monitoring and escalation procedure testing
+- **Incident Response Testing**: Emergency procedure validation
+  - Payment system failure response and user communication testing
+  - Database corruption recovery procedure validation
+  - Bot downtime communication and status page update testing
+  - Security incident response and user notification testing
+
+## Test Data Management
+- **Test Data Strategy**: Realistic and secure test data handling
+  - Anonymized production data for realistic testing scenarios
+  - Synthetic test data generation for privacy-sensitive testing
+  - Test user account management with known credentials
+  - Test payment scenarios using Telegram's test payment system
+- **Data Privacy in Testing**: Protecting user information during testing
+  - No production user data in test environments
+  - Test data anonymization and obfuscation procedures
+  - Secure deletion of test data after testing completion
+  - Compliance with data protection requirements in testing procedures
+
 # External Dependencies
 
 ## Telegram API
