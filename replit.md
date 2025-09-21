@@ -721,6 +721,196 @@ Preferred communication style: Simple, everyday language.
   - VIP member retention rate target: 85% (premium service standard)
   - Average revenue per user growth target: 15% quarterly increase
 
+# Content Moderation and Compliance Requirements
+
+## Content Standards and Guidelines
+- **Acceptable Content Criteria**: Clear guidelines for content approval
+  - Original content creation or proper licensing documentation required
+  - Age-appropriate content verification and classification system
+  - Professional quality standards for monetized content
+  - Content authenticity verification to prevent fraudulent material
+- **Prohibited Content Categories**: Explicit content exclusions
+  - Copyrighted material without proper licensing or fair use justification
+  - Content that violates Telegram's Terms of Service and Community Guidelines
+  - Child Sexual Abuse Material (CSAM) with zero-tolerance policy and immediate reporting
+  - Illegal content as defined by applicable jurisdictions
+  - Content that promotes harm, harassment, or discriminatory behavior
+  - Adult/NSFW content restricted to private 1:1 chats only (no groups/channels/inline mode)
+- **Content Classification System**: Structured content categorization
+  - Content type classification (photos, videos, documents, audio)
+  - Content theme categorization with user-friendly labels
+  - Content maturity rating system with appropriate access controls
+  - Premium content tier classification for pricing and access management
+
+## Automated Content Moderation
+- **Content Screening Technology**: Automated content analysis and filtering
+  - File type validation and malware scanning for uploaded content (≤10MB limit)
+  - Image recognition for detecting prohibited visual content (fallback to manual review for large files)
+  - Metadata analysis for file authenticity and copyright detection
+  - Size and format compliance checking for platform optimization
+  - Risk-based automated scanning with manual review fallback for resource constraints
+- **Behavioral Pattern Detection**: Automated abuse prevention
+  - Spam content detection through pattern recognition algorithms
+  - Duplicate content identification and prevention systems
+  - Rapid content upload monitoring with rate limiting enforcement
+  - Suspicious user behavior detection and automated flagging
+- **AI-Powered Content Analysis**: Advanced automated moderation capabilities
+  - Content quality assessment through machine learning algorithms
+  - Text content analysis for inappropriate language or themes (future enhancement)
+  - Visual content analysis for compliance with community standards
+  - Automated content tagging and categorization suggestions
+
+## Manual Content Review Process
+- **Content Review Workflow**: Systematic human moderation procedures
+  - Pre-publication review requirements for all monetized content
+  - Multi-stage approval process for high-value or sensitive content
+  - Expert reviewer assignment based on content type and complexity
+  - Quality assurance review for approved content before publication
+- **Review Criteria and Standards**: Consistent evaluation methodology
+  - Content quality assessment checklist with objective criteria
+  - Legal compliance verification including copyright and licensing
+  - Platform policy compliance verification with detailed documentation
+  - User safety assessment for potential harmful or inappropriate content
+- **Review Timeliness Requirements**: Efficient content processing
+  - Standard content review completion within 24 hours of submission
+  - Priority review for VIP creators within 12 hours
+  - Complex content review completion within 72 hours
+  - Emergency content removal within 2 hours of violation identification
+  - Illegal content (CSAM) removal within 1 hour with immediate law enforcement reporting
+
+## Legal and Regulatory Compliance
+- **Age Verification and Protection**: Minor protection measures
+  - Creator age verification requirement (18+ years minimum) with government-issued ID verification
+  - User age verification for accessing age-restricted content
+  - Content age-appropriateness verification and labeling
+  - Parental control compliance for platforms with minor users
+  - Age-restricted content access control implementation with private chat restrictions
+- **Copyright and Intellectual Property**: Content ownership verification
+  - Copyright ownership verification for all monetized content
+  - Digital Millennium Copyright Act (DMCA) compliance procedures with designated agent
+  - DMCA notice-and-takedown process with 24-48 hour response time
+  - Counter-notice procedures for disputed takedowns
+  - Repeat copyright infringer termination policy (three-strike system)
+  - Intellectual property dispute resolution process with audit logging
+- **Terms of Service and Legal Agreements**: Clear legal framework
+  - Comprehensive Terms of Service covering content creation and monetization
+  - Privacy Policy compliance with applicable data protection regulations
+  - Content licensing agreements between creators and platform
+  - User consent mechanisms for data collection and content usage
+
+## Platform Compliance Requirements
+- **Telegram Platform Compliance**: Adherence to host platform policies
+  - Strict compliance with Telegram's Terms of Service and Community Guidelines
+  - Bot API usage compliance with rate limits and usage policies
+  - Telegram Stars payment system compliance and transaction integrity
+  - Platform content policy adherence with regular policy update monitoring
+- **Payment Compliance**: Financial transaction regulatory compliance
+  - Anti-money laundering (AML) compliance measures
+  - Know Your Customer (KYC) procedures for high-value transactions
+  - Tax reporting compliance for creator earnings and platform transactions
+  - Financial record keeping and audit trail maintenance
+
+## User Reporting and Safety Mechanisms
+- **Content Reporting System**: User-initiated content review process
+  - In-bot reporting mechanisms (/report command and inline "Report Content" buttons)
+  - Clear reporting categories: copyright, illegal content, harassment, spam, other
+  - Anonymous reporting options to protect reporter privacy
+  - 24-hour triage SLA with 72-hour resolution commitment
+  - Feedback system informing reporters of action taken on reports
+  - Audit trail maintenance for all reported content and resolution actions
+- **User Safety Protections**: Comprehensive user protection measures
+  - User blocking and reporting functionality with permanent record keeping
+  - Harassment prevention measures with proactive monitoring
+  - Privacy protection mechanisms for user personal information
+  - Safe communication channels with moderated interaction options
+- **Community Guidelines Enforcement**: Consistent rule application
+  - Clear community guidelines with specific examples and consequences
+  - Graduated enforcement system with warnings, restrictions, and bans
+  - Appeal process for users who believe they were unfairly penalized
+  - Transparency reporting on enforcement actions and community health
+
+## Content Removal and Appeals Process
+- **Content Removal Procedures**: Systematic approach to content violations
+  - Immediate removal capability for content violating safety or legal requirements
+  - Graduated removal process with warnings for less severe violations
+  - Content quarantine system for pending review of reported material
+  - Backup and recovery procedures for content removed in error
+- **Appeals and Dispute Resolution**: Fair process for contested decisions
+  - Formal appeals process with clear submission requirements and timelines
+  - Independent review board for complex content disputes
+  - Dual control requirement for reinstating previously-removed content
+  - Creator notification system for content removal with detailed reasoning
+  - Restoration procedures for content removed in error after appeal review
+  - Conflict-of-interest policies for moderator rotation and decision review
+- **Transparency and Communication**: Clear communication about moderation actions
+  - Detailed reasoning provided for all content removal or restriction actions
+  - Regular transparency reports on content moderation activities
+  - Creator education resources about content guidelines and best practices
+  - Open communication channels for policy questions and clarifications
+
+## Data Protection and Privacy Compliance
+- **User Data Protection**: Privacy-compliant data handling procedures
+  - Minimal data collection principle with clear purpose limitation
+  - User consent management for all data collection and processing activities
+  - Data retention policies with automatic deletion procedures
+  - User data access and deletion rights implementation
+- **Content Creator Privacy**: Creator-specific privacy protections
+  - Creator identity protection options with anonymous content creation
+  - Financial information protection with secure payment processing
+  - Personal information minimization in content creation process
+  - Right to be forgotten implementation for departing creators
+
+## Compliance Monitoring and Auditing
+- **Regular Compliance Audits**: Systematic compliance verification
+  - Monthly internal compliance audits with documented findings
+  - Quarterly external compliance reviews by qualified professionals
+  - Annual comprehensive legal compliance assessment
+  - Continuous monitoring of regulatory changes affecting platform operations
+- **Documentation and Record Keeping**: Comprehensive audit trail maintenance
+  - Complete moderation action log with timestamps and reasoning
+  - Content approval and rejection records with detailed documentation
+  - User complaint and resolution tracking with follow-up verification
+  - Compliance training records for all staff involved in content moderation
+  - Moderation decision retention aligned with privacy policies (minimum 1 year)
+  - Transparency reporting: quarterly publication of takedown, appeal, and restoration statistics
+- **Policy Updates and Communication**: Keeping stakeholders informed
+  - Regular policy review and update procedures with stakeholder input
+  - Creator notification system for policy changes affecting content guidelines
+  - User communication about community guideline updates
+  - Staff training updates for new policies and regulatory requirements
+
+## Crisis Management and Incident Response
+- **Content Crisis Response**: Rapid response to serious content issues
+  - Emergency content removal protocols for immediate safety threats
+  - CSAM incident response: immediate removal, evidence preservation, mandatory reporting to NCMEC/authorities
+  - Crisis communication procedures for significant content issues
+  - Legal incident response procedures for law enforcement requests with logging
+  - Public relations management for content-related controversies
+  - Permanent account termination for illegal content violations
+- **Platform Security Incidents**: Response to platform compromises
+  - Data breach response procedures with user notification requirements
+  - Account compromise response with immediate security measures
+  - Payment system security incident response with financial protection measures
+  - Recovery procedures for platform-wide security issues
+
+## International Compliance Considerations
+- **Multi-Jurisdiction Compliance**: Global legal requirement management
+  - Content localization requirements for different geographic markets
+  - Geo-blocking controls for content restricted in specific jurisdictions
+  - International copyright and intellectual property law compliance
+  - Cross-border data transfer compliance with applicable regulations
+  - Cultural sensitivity requirements for diverse user base
+- **Legal Request Handling**: Government and law enforcement compliance
+  - Standardized process for legal content removal requests
+  - Documentation and logging of all legal compliance actions
+  - Legal challenge procedures for questionable removal requests
+  - Transparency reporting on government requests and compliance actions
+- **Regulatory Adaptation**: Flexible compliance framework
+  - Monitoring system for changing international regulations affecting content platforms
+  - Rapid policy adaptation procedures for new legal requirements
+  - Legal counsel consultation requirements for complex international issues
+  - Documentation system for jurisdiction-specific compliance measures
+
 # External Dependencies
 
 ## Telegram API
